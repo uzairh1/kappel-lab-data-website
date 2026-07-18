@@ -472,13 +472,20 @@ async function getIsoformVariants(p, isoformId){
     return vs;
   }
   try{
-    const res = await fetch(`mutations/${p.uniprot}/${isoformId}.json`);
-    if(!res.ok) throw new Error(res.status);
+    let res = await fetch(`mutations/${p.uniprot}/${isoformId}.json`);
+    if(res.status >= 500 && res.status < 600){
+      // transient rate-limit/server error under concurrent load — confirmed
+      // to happen in practice, worth one retry rather than giving up
+      await new Promise(r=>setTimeout(r, 800));
+      res = await fetch(`mutations/${p.uniprot}/${isoformId}.json`);
+    }
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const vs = data.variants.map(adaptRealVariant);
     REAL_ISOFORM_CACHE[cacheKey] = vs;
     return vs;
   } catch(err){
+    console.warn(`Failed to load variants for ${p.uniprot}/${isoformId}:`, err.message);
     REAL_ISOFORM_CACHE[cacheKey] = [];
     return [];
   }
@@ -538,7 +545,7 @@ function mvShapeSvg(shape, x, y, size, fill){
 }
 
 let mvCurrentProtein = null;
-let mvFilters = { dominantOnly: false, classification: "", condition: "" };
+let mvFilters = { dominantOnly: true, classification: "", condition: "" };
 
 async function renderMutantView(p){
   mvCurrentProtein = p;
@@ -569,14 +576,20 @@ async function renderMutantView(p){
   const maxLength = Math.max(...isoforms.map(i=>i.length || 1));
   const visibleIsoforms = mvFilters.dominantOnly ? isoforms.filter(i=>i.dominant) : isoforms;
 
-  // fetch variants ONLY for isoforms actually being displayed — this is
-  // the real lazy-load: dominant-only view fetches one small file, not
-  // all 38 isoforms' data upfront
+  // fetch variants ONLY for isoforms actually being displayed — real
+  // lazy-load: dominant-only view fetches one small file, not all N
+  // isoforms' data upfront. Batched (not all-at-once): firing 38
+  // simultaneous requests at GitHub Pages was directly observed causing
+  // 503 rate-limit errors on a couple of them.
   document.getElementById("mv-isoform-list").innerHTML = `<div class="empty-note">Loading ${visibleIsoforms.length} isoform track(s)…</div>`;
   const isoVariantsMap = {};
-  await Promise.all(visibleIsoforms.map(async iso=>{
-    isoVariantsMap[iso.id] = await getIsoformVariants(p, iso.id);
-  }));
+  const BATCH_SIZE = 6;
+  for(let i=0; i<visibleIsoforms.length; i+=BATCH_SIZE){
+    const batch = visibleIsoforms.slice(i, i+BATCH_SIZE);
+    await Promise.all(batch.map(async iso=>{
+      isoVariantsMap[iso.id] = await getIsoformVariants(p, iso.id);
+    }));
+  }
 
   // dynamic condition -> shape mapping, computed from whatever's actually
   // loaded right now (updates as more isoforms get expanded) — real
