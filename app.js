@@ -547,11 +547,19 @@ function mvShapeSvg(shape, x, y, size, fill){
 let mvCurrentProtein = null;
 let mvFilters = { dominantOnly: true, classification: "", condition: "" };
 let mvExpandedIsoformIds = new Set(); // which non-dominant isoforms have been individually expanded/loaded
-let mvZoomState = {}; // { [isoformId]: {start, end} } in real sequence-position units — absent means full-length view
+let mvZoomState = {}; // { [isoformId]: {start, end} } in real sequence-position units -- absent means full-length view
+let mvZoomHistory = {}; // { [isoformId]: [{start,end}|null, ...] } -- previous views, for step-back (null = was full view)
 let mvDragState = null; // active drag tracking, or null when not dragging
+
+function mvPushZoomHistory(isoId){
+  if(!mvZoomHistory[isoId]) mvZoomHistory[isoId] = [];
+  const current = mvZoomState[isoId];
+  mvZoomHistory[isoId].push(current ? {...current} : null); // null marks "was full view"
+}
 
 function mvZoomToCluster(isoId, minPos, maxPos){
   const padding = Math.max(5, Math.round((maxPos - minPos) * 0.15));
+  mvPushZoomHistory(isoId);
   mvZoomState[isoId] = { start: Math.max(0, minPos - padding), end: maxPos + padding };
   renderMutantView(mvCurrentProtein);
 }
@@ -630,12 +638,38 @@ function mvZoomDragEnd(event, isoLength){
   const newEnd = Math.round(viewStart + x2 * scale);
   if(newEnd - newStart < 5) return; // ignore near-zero-width drags, avoids zooming into nothing
 
+  mvPushZoomHistory(isoId);
   mvZoomState[isoId] = { start: newStart, end: newEnd };
   renderMutantView(mvCurrentProtein);
 }
 
 function mvZoomReset(isoId){
   delete mvZoomState[isoId];
+  mvZoomHistory[isoId] = [];
+  renderMutantView(mvCurrentProtein);
+}
+
+function mvZoomBack(isoId){
+  const hist = mvZoomHistory[isoId];
+  if(!hist || !hist.length) return;
+  const previous = hist.pop();
+  if(previous) mvZoomState[isoId] = previous;
+  else delete mvZoomState[isoId]; // was full view before the last zoom
+  renderMutantView(mvCurrentProtein);
+}
+
+function mvPan(isoId, direction, isoLength){
+  const zoom = mvZoomState[isoId];
+  const viewStart = zoom ? zoom.start : 0;
+  const viewEnd = zoom ? zoom.end : isoLength;
+  const span = viewEnd - viewStart;
+  const shift = Math.round(span * 0.5) * direction; // move by half the current view width
+  let newStart = viewStart + shift, newEnd = viewEnd + shift;
+  if(newStart < 0){ newEnd -= newStart; newStart = 0; } // clamp to sequence bounds without changing zoom width
+  if(newEnd > isoLength){ newStart -= (newEnd - isoLength); newEnd = isoLength; }
+  newStart = Math.max(0, newStart);
+  // panning doesn't push history — it's lateral movement at the same zoom level, not a new zoom level
+  mvZoomState[isoId] = { start: newStart, end: newEnd };
   renderMutantView(mvCurrentProtein);
 }
 
@@ -789,7 +823,7 @@ async function renderMutantView(p){
         const title = distinctPositions.size > 1
           ? `${bucket.length} variants, positions ${minPos}-${maxPos} — click to zoom in`
           : `${bucket.length} variants at position ${minPos} — click to list`;
-        markers += `<g class="mv-marker" onclick="${clickAction}">
+        markers += `<g class="mv-marker" onclick="event.stopPropagation(); ${clickAction}">
           <title>${title}</title>
           <line x1="${x}" y1="${trackY}" x2="${x}" y2="${stemTopY}" stroke="${color}" stroke-width="1.3" stroke-opacity="0.55"/>
           <circle cx="${x}" cy="${stemTopY}" r="12" fill="${color}"/>
@@ -803,7 +837,7 @@ async function renderMutantView(p){
         const shape = shapeFor(item.v.condition);
         const color = colorFor(item.v.classification);
         const title = `${item.v.mutated_from}${item.v.position}${item.v.mutated_to} — ${item.v.classification}, ${item.v.condition}`;
-        markers += `<g class="mv-marker" onclick='openMvDetail(${JSON.stringify(item.v).replace(/'/g,"&apos;")})'>
+        markers += `<g class="mv-marker" onclick='event.stopPropagation(); openMvDetail(${JSON.stringify(item.v).replace(/'/g,"&apos;")})'>
           <title>${title}</title>
           <line x1="${item.x}" y1="${trackY}" x2="${item.x}" y2="${stemTopY}" stroke="${color}" stroke-width="1.3" stroke-opacity="0.55"/>
           ${mvShapeSvg(shape, item.x, stemTopY, 6, color)}
@@ -818,7 +852,7 @@ async function renderMutantView(p){
       const x2 = posToX(v.position_end);
       const color = colorFor(v.classification);
       const title = `${v.mutated_from}${v.position}-${v.position_end}${v.mutated_to} (range) — ${v.classification}, ${v.condition}`;
-      rangeMarkers += `<g class="mv-marker" onclick='openMvDetail(${JSON.stringify(v).replace(/'/g,"&apos;")})'>
+      rangeMarkers += `<g class="mv-marker" onclick='event.stopPropagation(); openMvDetail(${JSON.stringify(v).replace(/'/g,"&apos;")})'>
         <title>${title}</title>
         <rect x="${x1}" y="${rangeLaneY}" width="${Math.max(2,x2-x1)}" height="6" rx="2" fill="${color}" fill-opacity="0.7"/>
         <line x1="${x1}" y1="${rangeLaneY-2}" x2="${x1}" y2="${rangeLaneY+8}" stroke="${color}" stroke-width="1.5"/>
@@ -842,7 +876,11 @@ async function renderMutantView(p){
     return `<div class="mv-isoform-row ${iso.dominant?'dominant':''}">
       <div class="mv-isoform-head">
         <span><b>${iso.label}</b>${iso.dominant?'<span class="dom-tag">DOMINANT</span>':''}${mismatchBadge}</span>
-        <span>${iso.length} aa &middot; ${isoVariants.length} variants shown${isZoomed ? ` &middot; zoomed to ${viewStart}-${viewEnd} aa &middot; <a href="javascript:void(0)" onclick="mvZoomReset('${iso.id}')" style="color:var(--teal); text-decoration:underline;">reset</a>` : ''}</span>
+        <span>${iso.length} aa &middot; ${isoVariants.length} variants shown${isZoomed ? ` &middot; zoomed to ${viewStart}-${viewEnd} aa
+          &middot; <a href="javascript:void(0)" onclick="mvPan('${iso.id}', -1, ${iso.length})" style="color:var(--teal); text-decoration:underline;" title="Pan left">&#8592;</a>
+          <a href="javascript:void(0)" onclick="mvPan('${iso.id}', 1, ${iso.length})" style="color:var(--teal); text-decoration:underline;" title="Pan right">&#8594;</a>
+          ${(mvZoomHistory[iso.id]||[]).length ? `&middot; <a href="javascript:void(0)" onclick="mvZoomBack('${iso.id}')" style="color:var(--teal); text-decoration:underline;">back</a>` : ''}
+          &middot; <a href="javascript:void(0)" onclick="mvZoomReset('${iso.id}')" style="color:var(--teal); text-decoration:underline;">reset to full</a>` : ''}</span>
       </div>
       <svg class="mv-track-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMax meet"
            style="cursor:crosshair;"
@@ -1021,6 +1059,7 @@ function openProteinById(uniprot){
 
   mvExpandedIsoformIds = new Set();
   mvZoomState = {};
+  mvZoomHistory = {};
   renderMutantView(p);
   switchTab("mutantview");
   loadDetailTabs(p.uniprot);
