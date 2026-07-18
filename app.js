@@ -546,6 +546,12 @@ function mvShapeSvg(shape, x, y, size, fill){
 
 let mvCurrentProtein = null;
 let mvFilters = { dominantOnly: true, classification: "", condition: "" };
+let mvExpandedIsoformIds = new Set(); // which non-dominant isoforms have been individually expanded/loaded
+
+function expandIsoform(isoformId){
+  mvExpandedIsoformIds.add(isoformId);
+  renderMutantView(mvCurrentProtein);
+}
 
 async function renderMutantView(p){
   mvCurrentProtein = p;
@@ -574,18 +580,19 @@ async function renderMutantView(p){
 
   const isoforms = idx.isoforms;
   const maxLength = Math.max(...isoforms.map(i=>i.length || 1));
+  // "Dominant isoform only" now controls which ROWS are listed at all.
+  // Among listed rows, only the dominant one (plus anything individually
+  // expanded by click) actually has its variant data fetched — this is
+  // what fixes "unchecking is slow": showing 38 isoform rows is instant
+  // (just index.json labels), loading their variant data is opt-in per row.
   const visibleIsoforms = mvFilters.dominantOnly ? isoforms.filter(i=>i.dominant) : isoforms;
+  const isoformsToLoad = visibleIsoforms.filter(i=>i.dominant || mvExpandedIsoformIds.has(i.id));
 
-  // fetch variants ONLY for isoforms actually being displayed — real
-  // lazy-load: dominant-only view fetches one small file, not all N
-  // isoforms' data upfront. Batched (not all-at-once): firing 38
-  // simultaneous requests at GitHub Pages was directly observed causing
-  // 503 rate-limit errors on a couple of them.
-  document.getElementById("mv-isoform-list").innerHTML = `<div class="empty-note">Loading ${visibleIsoforms.length} isoform track(s)…</div>`;
+  document.getElementById("mv-isoform-list").innerHTML = `<div class="empty-note">Loading ${isoformsToLoad.length} isoform track(s)…</div>`;
   const isoVariantsMap = {};
   const BATCH_SIZE = 6;
-  for(let i=0; i<visibleIsoforms.length; i+=BATCH_SIZE){
-    const batch = visibleIsoforms.slice(i, i+BATCH_SIZE);
+  for(let i=0; i<isoformsToLoad.length; i+=BATCH_SIZE){
+    const batch = isoformsToLoad.slice(i, i+BATCH_SIZE);
     await Promise.all(batch.map(async iso=>{
       isoVariantsMap[iso.id] = await getIsoformVariants(p, iso.id);
     }));
@@ -607,6 +614,18 @@ async function renderMutantView(p){
 
   const listEl = document.getElementById("mv-isoform-list");
   listEl.innerHTML = visibleIsoforms.map(iso=>{
+    const isLoaded = iso.id in isoVariantsMap;
+    if(!isLoaded){
+      // not fetched yet — lightweight placeholder, click to load this
+      // isoform's variants specifically (not everything at once)
+      return `<div class="mv-isoform-row" style="cursor:pointer;" onclick="expandIsoform('${iso.id.replace(/'/g,"\\'")}')">
+        <div class="mv-isoform-head">
+          <span><b>${iso.label}</b></span>
+          <span>${iso.length ?? '?'} aa &middot; ${iso.variant_count ?? '?'} variant(s) &middot; <span style="color:var(--teal); text-decoration:underline;">click to load</span></span>
+        </div>
+      </div>`;
+    }
+
     const W = 1040;
     const stemGap = 16;
     const rangeLaneH = 20; // dedicated lane for span/range variants, separate from point stacking
@@ -852,6 +871,7 @@ function openProteinById(uniprot){
   `;
   document.getElementById("d-uniprot-code").textContent = p.uniprot;
 
+  mvExpandedIsoformIds = new Set();
   renderMutantView(p);
   switchTab("mutantview");
   loadDetailTabs(p.uniprot);
