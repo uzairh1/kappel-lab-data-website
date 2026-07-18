@@ -550,6 +550,33 @@ let mvExpandedIsoformIds = new Set(); // which non-dominant isoforms have been i
 let mvZoomState = {}; // { [isoformId]: {start, end} } in real sequence-position units — absent means full-length view
 let mvDragState = null; // active drag tracking, or null when not dragging
 
+function mvZoomToCluster(isoId, minPos, maxPos){
+  const padding = Math.max(5, Math.round((maxPos - minPos) * 0.15));
+  mvZoomState[isoId] = { start: Math.max(0, minPos - padding), end: maxPos + padding };
+  renderMutantView(mvCurrentProtein);
+}
+
+function openMvClusterList(variants){
+  const panel = document.getElementById("mv-detail-panel");
+  panel.style.display = "block";
+  panel.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <h3>${variants.length} variants at position ${variants[0].position}</h3>
+      <button class="btn secondary small" onclick="document.getElementById('mv-detail-panel').style.display='none'">Close</button>
+    </div>
+    <p class="subnote" style="margin-top:6px;">All at the same residue — zooming can't separate these since they share one position. Pick one for full detail.</p>
+    <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+      ${variants.map(v => `
+        <div class="cond-card" style="cursor:pointer;" onclick='openMvDetail(${JSON.stringify(v).replace(/'/g,"&apos;")})'>
+          <div><div class="cname">${v.mutated_from}${v.position}${v.mutated_to}</div><div class="ctype">${v.condition}</div></div>
+          <span class="badge ${v.classification==='Pathogenic'||v.classification==='Likely pathogenic' ? 'no':'yes'}">${v.classification}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  panel.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+
 function expandIsoform(isoformId){
   mvExpandedIsoformIds.add(isoformId);
   renderMutantView(mvCurrentProtein);
@@ -610,6 +637,17 @@ function mvZoomDragEnd(event, isoLength){
 function mvZoomReset(isoId){
   delete mvZoomState[isoId];
   renderMutantView(mvCurrentProtein);
+}
+
+const MV_SEVERITY_RANK = {
+  "Pathogenic": 5, "Likely pathogenic": 4, "Oncogenic": 5, "Likely oncogenic": 4,
+  "Uncertain significance": 3, "Uncertain risk allele": 3,
+  "Likely benign": 2, "Benign": 1,
+};
+function mvWorstCase(variants){
+  return variants.reduce((worst, v) =>
+    (MV_SEVERITY_RANK[v.classification] || 0) > (MV_SEVERITY_RANK[worst.classification] || 0) ? v : worst
+  , variants[0]);
 }
 
 async function renderMutantView(p){
@@ -715,9 +753,11 @@ async function renderMutantView(p){
       const key = Math.round(item.x/4)*4;
       (buckets[key] = buckets[key] || []).push(item);
     });
+    const CLUSTER_THRESHOLD = 5; // buckets at/above this render as one cluster marker, not N stacked lollipops
     const maxBucketSize = Math.max(1, ...Object.values(buckets).map(b=>b.length));
+    const headroomLevels = Math.min(maxBucketSize, CLUSTER_THRESHOLD) - 1; // clustered buckets only need cluster-marker height, not full stack height
 
-    const trackY = 20 + (maxBucketSize-1)*stemGap + (rangeVariants.length ? rangeLaneH : 0);
+    const trackY = 20 + headroomLevels*stemGap + (rangeVariants.length ? rangeLaneH : 0);
     const trackH = 14;
     const H = trackY + trackH + 28;
     const rangeLaneY = trackY - (rangeVariants.length ? rangeLaneH - 4 : 0);
@@ -725,6 +765,30 @@ async function renderMutantView(p){
     let markers = "";
     Object.values(buckets).forEach(bucket=>{
       bucket.sort((a,b)=>a.v.position-b.v.position);
+
+      if(bucket.length >= CLUSTER_THRESHOLD){
+        const worst = mvWorstCase(bucket.map(item=>item.v));
+        const color = colorFor(worst.classification);
+        const x = bucket.reduce((s,item)=>s+item.x,0) / bucket.length; // average x of the cluster
+        const stemTopY = trackY - 10;
+        const distinctPositions = new Set(bucket.map(item=>item.v.position));
+        const positions = bucket.map(item=>item.v.position);
+        const minPos = Math.min(...positions), maxPos = Math.max(...positions);
+        const clickAction = distinctPositions.size > 1
+          ? `mvZoomToCluster('${iso.id}', ${minPos}, ${maxPos})`
+          : `openMvClusterList(${JSON.stringify(bucket.map(item=>item.v)).replace(/'/g,"&apos;")})`;
+        const title = distinctPositions.size > 1
+          ? `${bucket.length} variants, positions ${minPos}-${maxPos} — click to zoom in`
+          : `${bucket.length} variants at position ${minPos} — click to list`;
+        markers += `<g class="mv-marker" onclick="${clickAction}">
+          <title>${title}</title>
+          <line x1="${x}" y1="${trackY}" x2="${x}" y2="${stemTopY}" stroke="${color}" stroke-width="1.3" stroke-opacity="0.55"/>
+          <circle cx="${x}" cy="${stemTopY}" r="12" fill="${color}"/>
+          <text x="${x}" y="${stemTopY+4}" font-family="IBM Plex Mono" font-size="10.5" font-weight="600" fill="#fff" text-anchor="middle">${bucket.length}</text>
+        </g>`;
+        return;
+      }
+
       bucket.forEach((item, level)=>{
         const stemTopY = trackY - 10 - level*stemGap;
         const shape = shapeFor(item.v.condition);
