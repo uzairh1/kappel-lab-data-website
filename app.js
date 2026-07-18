@@ -547,9 +547,68 @@ function mvShapeSvg(shape, x, y, size, fill){
 let mvCurrentProtein = null;
 let mvFilters = { dominantOnly: true, classification: "", condition: "" };
 let mvExpandedIsoformIds = new Set(); // which non-dominant isoforms have been individually expanded/loaded
+let mvZoomState = {}; // { [isoformId]: {start, end} } in real sequence-position units — absent means full-length view
+let mvDragState = null; // active drag tracking, or null when not dragging
 
 function expandIsoform(isoformId){
   mvExpandedIsoformIds.add(isoformId);
+  renderMutantView(mvCurrentProtein);
+}
+
+const MV_TRACK_W = 1040; // fixed viewBox width every track SVG uses — needed to convert screen pixels to sequence position
+
+function mvSvgX(event, svgEl){
+  const rect = svgEl.getBoundingClientRect();
+  const scale = MV_TRACK_W / rect.width; // rendered CSS width can differ from the viewBox's internal units
+  return Math.max(0, Math.min(MV_TRACK_W, (event.clientX - rect.left) * scale));
+}
+
+function mvZoomDragStart(event, isoId){
+  const svgEl = event.currentTarget;
+  mvDragState = { isoId, svgEl, startX: mvSvgX(event, svgEl), currentX: mvSvgX(event, svgEl) };
+  const overlay = document.getElementById(`mv-zoom-overlay-${isoId}`);
+  if(overlay){ overlay.setAttribute("width", 0); overlay.style.display = "block"; }
+}
+
+function mvZoomDragMove(event){
+  if(!mvDragState) return;
+  const x = mvSvgX(event, mvDragState.svgEl);
+  mvDragState.currentX = x;
+  const overlay = document.getElementById(`mv-zoom-overlay-${mvDragState.isoId}`);
+  if(overlay){
+    const x1 = Math.min(mvDragState.startX, x), x2 = Math.max(mvDragState.startX, x);
+    overlay.setAttribute("x", x1);
+    overlay.setAttribute("width", x2 - x1);
+  }
+}
+
+function mvZoomDragEnd(event, isoLength){
+  if(!mvDragState) return;
+  const { isoId, startX, currentX } = mvDragState;
+  const overlay = document.getElementById(`mv-zoom-overlay-${isoId}`);
+  if(overlay) overlay.style.display = "none";
+  const pixelDist = Math.abs(currentX - startX);
+  mvDragState = null;
+  if(pixelDist < 8) return; // treat as a plain click (e.g. on a marker), not a zoom drag — don't interfere
+
+  // convert the dragged pixel range, within THIS track's current view window,
+  // back into real sequence-position units
+  const existing = mvZoomState[isoId];
+  const viewStart = existing ? existing.start : 0;
+  const viewEnd = existing ? existing.end : isoLength;
+  const viewSpan = viewEnd - viewStart;
+  const scale = viewSpan / MV_TRACK_W;
+  const x1 = Math.min(startX, currentX), x2 = Math.max(startX, currentX);
+  const newStart = Math.round(viewStart + x1 * scale);
+  const newEnd = Math.round(viewStart + x2 * scale);
+  if(newEnd - newStart < 5) return; // ignore near-zero-width drags, avoids zooming into nothing
+
+  mvZoomState[isoId] = { start: newStart, end: newEnd };
+  renderMutantView(mvCurrentProtein);
+}
+
+function mvZoomReset(isoId){
+  delete mvZoomState[isoId];
   renderMutantView(mvCurrentProtein);
 }
 
@@ -630,16 +689,27 @@ async function renderMutantView(p){
     const stemGap = 16;
     const rangeLaneH = 20; // dedicated lane for span/range variants, separate from point stacking
 
+    const zoom = mvZoomState[iso.id];
+    const isZoomed = !!zoom;
+    const viewStart = zoom ? zoom.start : 0;
+    const viewEnd = zoom ? zoom.end : (iso.length || 1);
+    const viewSpan = Math.max(1, viewEnd - viewStart);
+
     const isoVariants = (isoVariantsMap[iso.id] || [])
       .filter(v=> !mvFilters.classification || v.classification===mvFilters.classification)
-      .filter(v=> !mvFilters.condition || v.condition===mvFilters.condition);
+      .filter(v=> !mvFilters.condition || v.condition===mvFilters.condition)
+      .filter(v=> !isZoomed || (v.position <= viewEnd && (v.position_end ?? v.position) >= viewStart)); // only what overlaps the current view
     const pointVariants = isoVariants.filter(v=>!v.is_range);
     const rangeVariants = isoVariants.filter(v=>v.is_range);
 
-    const scale = ((iso.length||1)/maxLength) * W;
+    // zoomed: use the full track width for just the selected region (like
+    // zooming into a genome browser). Not zoomed: keep the existing
+    // relative-isoform-length overview scale, for cross-isoform comparison.
+    const scale = isZoomed ? W : ((iso.length||1)/maxLength) * W;
+    const posToX = pos => isZoomed ? ((pos - viewStart)/viewSpan)*W : (pos/(iso.length||1))*scale;
     const trackColor = iso.dominant ? "#C8781E" : "#8C949C";
 
-    const withX = pointVariants.map(v => ({ v, x: (v.position/(iso.length||1))*scale }));
+    const withX = pointVariants.map(v => ({ v, x: posToX(v.position) }));
     const buckets = {};
     withX.forEach(item=>{
       const key = Math.round(item.x/4)*4;
@@ -671,8 +741,8 @@ async function renderMutantView(p){
     // range variants — drawn as a highlighted span, not forced into a point
     let rangeMarkers = "";
     rangeVariants.forEach(v=>{
-      const x1 = (v.position/(iso.length||1))*scale;
-      const x2 = (v.position_end/(iso.length||1))*scale;
+      const x1 = posToX(v.position);
+      const x2 = posToX(v.position_end);
       const color = colorFor(v.classification);
       const title = `${v.mutated_from}${v.position}-${v.position_end}${v.mutated_to} (range) — ${v.classification}, ${v.condition}`;
       rangeMarkers += `<g class="mv-marker" onclick='openMvDetail(${JSON.stringify(v).replace(/'/g,"&apos;")})'>
@@ -687,7 +757,7 @@ async function renderMutantView(p){
     const nTicks = 10;
     for(let t=0; t<=nTicks; t++){
       const x = t*(scale/nTicks);
-      const pos = Math.round((t/nTicks)*(iso.length||0));
+      const pos = isZoomed ? Math.round(viewStart + (t/nTicks)*viewSpan) : Math.round((t/nTicks)*(iso.length||0));
       ruler += `<line x1="${x}" y1="${trackY+trackH+2}" x2="${x}" y2="${trackY+trackH+7}" stroke="#8C949C" stroke-width="1"/>`;
       ruler += `<text x="${x}" y="${trackY+trackH+19}" font-family="IBM Plex Mono" font-size="9.5" fill="#8C949C" text-anchor="${t===0?'start':(t===nTicks?'end':'middle')}">${pos}</text>`;
     }
@@ -699,13 +769,18 @@ async function renderMutantView(p){
     return `<div class="mv-isoform-row ${iso.dominant?'dominant':''}">
       <div class="mv-isoform-head">
         <span><b>${iso.label}</b>${iso.dominant?'<span class="dom-tag">DOMINANT</span>':''}${mismatchBadge}</span>
-        <span>${iso.length} aa &middot; ${isoVariants.length} variants shown</span>
+        <span>${iso.length} aa &middot; ${isoVariants.length} variants shown${isZoomed ? ` &middot; zoomed to ${viewStart}-${viewEnd} aa &middot; <a href="javascript:void(0)" onclick="mvZoomReset('${iso.id}')" style="color:var(--teal); text-decoration:underline;">reset</a>` : ''}</span>
       </div>
-      <svg class="mv-track-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMax meet">
+      <svg class="mv-track-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMax meet"
+           style="cursor:crosshair;"
+           onmousedown="mvZoomDragStart(event,'${iso.id}')" onmousemove="mvZoomDragMove(event)"
+           onmouseup="mvZoomDragEnd(event, ${iso.length})" onmouseleave="mvZoomDragEnd(event, ${iso.length})"
+           ondblclick="mvZoomReset('${iso.id}')" title="Drag to zoom into a region · double-click to reset">
         <rect x="0" y="${trackY}" width="${scale}" height="${trackH}" rx="3" fill="${trackColor}" fill-opacity="0.18" stroke="${trackColor}"/>
         ${ruler}
         ${rangeMarkers}
         ${markers}
+        <rect id="mv-zoom-overlay-${iso.id}" x="0" y="0" width="0" height="${H}" fill="#1D6E63" fill-opacity="0.15" style="display:none; pointer-events:none;"/>
       </svg>
     </div>`;
   }).join("");
@@ -872,6 +947,7 @@ function openProteinById(uniprot){
   document.getElementById("d-uniprot-code").textContent = p.uniprot;
 
   mvExpandedIsoformIds = new Set();
+  mvZoomState = {};
   renderMutantView(p);
   switchTab("mutantview");
   loadDetailTabs(p.uniprot);
