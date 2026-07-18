@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kappel Lab Data Website</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topnav">
+  <div class="shell nav-row">
+    <div class="logo"><span>Kappel Lab Data Website</span><span class="logo-tag">pilot</span><span class="logo-tag" id="data-source-badge" style="display:none;"></span></div>
+    <nav class="links">
+      <button data-nav="home" class="active">Home</button>
+      <button data-nav="search">Browse proteins</button>
+      <button data-nav="browse-anchor">Condensates</button>
+      <button data-nav="downloads-anchor">Downloads</button>
+      <button data-nav="docs-anchor">Cite</button>
+    </nav>
+    <div class="nav-search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="nav-search-input" type="text" placeholder="gene symbol or UniProt ID…">
+    </div>
+  </div>
+</header>
+
+<!-- ================= HOME ================= -->
+<div class="view active" id="view-home">
+  <div class="shell">
+    <section class="hero">
+      <div class="hero-kicker">Pilot release · 101 curated proteins</div>
+      <p class="hero-sub">This resource links per-residue intrinsic disorder predictions, sequence biophysics, and reported biomolecular condensate membership for a curated set of human proteins — built to scale toward a full proteome-wide release.</p>
+
+      <div class="hero-search">
+        <div class="hero-search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C949C" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="hero-search-input" type="text" placeholder="e.g. CALD1, CACYBP, Q05682">
+        </div>
+        <button class="btn" id="hero-search-btn">Search database</button>
+      </div>
+      <div class="hero-examples">
+        Try:
+        <button data-example="CALD1">CALD1</button>
+        <button data-example="CACYBP">CACYBP</button>
+        <button data-example="CADM1">CADM1</button>
+      </div>
+
+      <div class="track-panel">
+        <div class="track-panel-head" id="hero-track-label"></div>
+        <svg id="hero-track-svg" preserveAspectRatio="none"></svg>
+        <div class="track-legend">
+          <span><i class="swatch" style="background:#3E4A52"></i> Folded region</span>
+          <span><i class="swatch" style="background:#C8781E"></i> Predicted IDR</span>
+          <span><i class="swatch" style="background:#6B4C9A"></i> Named domain</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stats" id="stats-grid" style="display:contents;"></div>
+    </section>
+    <div class="stats-note">Pilot dataset — the full release is designed to scale to proteome-wide coverage with accompanying microscopy and structural data (multi-TB).</div>
+
+    <section id="browse-anchor">
+      <div class="section-head">
+        <div><div class="eyebrow">Browse</div><h2>By condensate</h2></div>
+        <p>Click a condensate to see every protein in the pilot set reported to localize there.</p>
+      </div>
+      <div class="chip-grid" id="condensate-grid"></div>
+    </section>
+
+    <section id="downloads-anchor">
+      <div class="section-head">
+        <div><div class="eyebrow">Spotlight</div><h2>Featured protein</h2></div>
+      </div>
+      <div class="feature-card" id="feature-card"></div>
+    </section>
+  </div>
+</div>
+
+<!-- ================= SEARCH / TABLE VIEW ================= -->
+<div class="view" id="view-search">
+  <div class="shell">
+    <div class="section-head">
+      <div><div class="eyebrow" id="search-eyebrow">Browse</div><h2 id="search-title">All proteins</h2></div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="fitem">
+        <input id="filter-search" type="text" placeholder="search gene / UniProt…" style="width:170px;">
+      </div>
+      <div class="divider"></div>
+      <div class="fitem">
+        Condensate-forming:
+        <select id="condensate-forming-select">
+          <option value="any">Any</option>
+          <option value="yes">Yes</option>
+          <option value="no">No / not reported</option>
+        </select>
+      </div>
+      <div class="fitem">
+        Condensate:
+        <select id="condensate-filter-select"></select>
+      </div>
+      <div class="fitem">
+        Dominant isoform:
+        <select id="dominant-select">
+          <option value="any">Any</option>
+          <option value="yes">Dominant</option>
+          <option value="no">Alternative</option>
+        </select>
+      </div>
+      <div class="divider"></div>
+      <div class="fitem">
+        Min. disorder:
+        <input id="disorder-range" type="range" min="0" max="100" value="0" style="width:100px; accent-color:var(--teal);">
+        <span class="range-val" id="disorder-range-val">0%+</span>
+      </div>
+    </div>
+
+    <div class="search-toolbar">
+      <div class="results-count"><b id="results-n">—</b> proteins matched</div>
+      <div class="toolbar-actions">
+        <div class="cols-dropdown" id="cols-dropdown">
+          <button class="btn secondary small" id="cols-toggle-btn">Columns ▾</button>
+          <div class="cols-panel" id="cols-panel"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-scroll-wrap">
+      <table class="results-table">
+        <thead id="results-thead"></thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DETAIL VIEW ================= -->
+<div class="view" id="view-detail">
+  <div class="shell">
+    <button class="btn secondary" style="margin-bottom:22px; font-size:12.5px; padding:8px 14px;" onclick="showView('search')">← Back to results</button>
+
+    <div class="detail-header">
+      <div>
+        <div class="eyebrow" id="d-eyebrow">Dominant isoform</div>
+        <div class="detail-title-row">
+          <h1 id="d-gene">—</h1>
+          <span class="uid" id="d-uniprot">Q00000</span>
+        </div>
+        <div class="detail-meta-line" id="d-meta"></div>
+      </div>
+      <div class="detail-actions">
+        <button class="btn" onclick="switchTab('downloads')">Download data</button>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <button data-tab="mutantview" class="active">Mutant view</button>
+      <button data-tab="overview">Overview</button>
+      <button data-tab="architecture">Architecture</button>
+      <button data-tab="condensates">Condensates</button>
+      <button data-tab="diseases">Diseases</button>
+      <button data-tab="variants">Variants &amp; RBP</button>
+      <button data-tab="biophysics">Biophysics</button>
+      <button data-tab="sequence">Sequence</button>
+      <button data-tab="interactions">Interactions</button>
+      <button data-tab="annotation">Gene Annotation</button>
+      <button data-tab="downloads">Downloads</button>
+    </div>
+
+    <div class="tab-content active" id="tab-mutantview">
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
+          <h3>Isoforms &amp; variant landscape</h3>
+          <span class="mock-badge">⚠ Mock data — pending real dataset from Hoffman2 filter job</span>
+        </div>
+        <p class="subnote" style="margin-bottom:16px;">Each row is one isoform, drawn to its real relative length. Markers show variant position; color = clinical classification, shape = associated condition. Click a marker for full detail.</p>
+
+        <div class="filter-bar" style="margin-bottom:16px;">
+          <label class="fitem" style="cursor:pointer;"><input type="checkbox" id="mv-dominant-only"> Dominant isoform only</label>
+          <div class="divider"></div>
+          <div class="fitem">
+            Classification:
+            <select id="mv-class-filter"><option value="">Any</option></select>
+          </div>
+          <div class="fitem">
+            Condition:
+            <select id="mv-condition-filter"><option value="">Any</option></select>
+          </div>
+        </div>
+
+        <div id="mv-isoform-list"></div>
+
+        <div class="mv-legend" id="mv-legend"></div>
+      </div>
+
+      <div class="panel" id="mv-detail-panel" style="display:none; margin-top:16px;"></div>
+    </div>
+
+    <div class="tab-content" id="tab-overview">
+      <div class="detail-grid">
+        <div class="panel">
+          <h3>Record summary</h3>
+          <div class="kv-list" id="d-kv"></div>
+        </div>
+        <div class="panel">
+          <h3>Disorder &amp; domain architecture</h3>
+          <p style="font-size:13px; color:var(--muted); line-height:1.7;">Full per-residue architecture — folded regions, predicted IDRs, and named domains drawn to scale — is on the <button class="btn secondary small" onclick="switchTab('architecture')" style="padding:3px 9px; font-size:11.5px; vertical-align:middle;">Architecture</button> tab.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-architecture">
+      <div class="panel">
+        <h3>Sequence architecture</h3>
+        <div class="arch-svg-wrap"><svg id="arch-svg" preserveAspectRatio="none"></svg></div>
+        <div class="track-legend" id="d-arch-legend" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-condensates">
+      <div class="panel">
+        <h3>Reported condensate membership</h3>
+        <div class="cond-card-list" id="d-condensates"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-diseases">
+      <div class="panel">
+        <h3>Disease associations <span class="mono" id="d-disease-count-label" style="font-size:12px; color:var(--faint); font-weight:400;"></span></h3>
+        <p class="subnote" style="margin-top:-6px; margin-bottom:16px;">Sourced from Open Targets association evidence, aggregated to one row per disease (highest score across evidence records, summed evidence count). Filter and sort below rather than scrolling everything at once — some proteins have 1,000+ associations.</p>
+
+        <div class="filter-bar" style="margin-bottom:16px;">
+          <div class="fitem"><input id="disease-search" type="text" placeholder="filter by EFO / MONDO id…" style="width:170px;"></div>
+          <div class="divider"></div>
+          <div class="fitem">
+            Evidence type:
+            <select id="disease-datatype-select"><option value="">Any</option></select>
+          </div>
+          <div class="fitem">
+            Min. score:
+            <input id="disease-min-score" type="range" min="0" max="100" value="0" style="width:100px; accent-color:var(--teal);">
+            <span class="range-val" id="disease-min-score-val">0+</span>
+          </div>
+          <div class="divider"></div>
+          <div class="fitem">
+            Sort:
+            <select id="disease-sort-select">
+              <option value="score">Score</option>
+              <option value="evidence_count">Evidence count</option>
+              <option value="disease_id">Disease ID</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="disease-loading" class="empty-note">Loading disease associations…</div>
+        <div class="table-scroll-wrap" id="disease-table-wrap" style="display:none; max-height:420px;">
+          <table class="results-table">
+            <thead><tr><th>Disease ID</th><th>Score</th><th>Evidence count</th><th>Evidence types</th></tr></thead>
+            <tbody id="disease-table-body"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="disease-pagination"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-variants">
+      <div class="panel" id="d-variants-panel"></div>
+    </div>
+
+    <div class="tab-content" id="tab-biophysics">
+      <div class="panel">
+        <h3>Sequence-derived biophysical properties</h3>
+        <div id="d-biophysics"></div>
+      </div>
+      <div class="panel" style="margin-top:20px;">
+        <h3>Whole protein vs. IDR vs. folded region</h3>
+        <div id="d-region-biophysics" class="empty-note">Loading…</div>
+      </div>
+      <div class="panel" style="margin-top:20px;" id="d-domain-types-wrap">
+        <h3>Per-domain-type properties</h3>
+        <div id="d-domain-types"></div>
+      </div>
+      <div class="panel" style="margin-top:20px;">
+        <h3>Phase-separation patterning parameters</h3>
+        <div id="d-patterning"></div>
+        <p class="subnote">From coarse-grained simulation, averaged across replicate runs. Not experimental measurement.</p>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-sequence">
+      <div class="panel">
+        <h3>Reference sequence &amp; identifiers</h3>
+        <div class="kv-list" id="d-hgvs" style="margin-bottom:18px;"></div>
+        <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">Full sequence</span>
+        <div class="seq-box" id="d-full-sequence" style="max-height:260px; overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-interactions">
+      <div class="panel">
+        <h3>Protein-protein interaction partners <span class="mono" id="d-ppi-count-label" style="font-size:12px; color:var(--faint); font-weight:400;"></span></h3>
+        <p class="subnote" style="margin-top:-6px; margin-bottom:16px;">Partners already in this pilot's 101-protein set are linked directly; others are shown by UniProt ID only.</p>
+        <div class="filter-bar" style="margin-bottom:16px;">
+          <div class="fitem"><input id="ppi-search" type="text" placeholder="filter by UniProt ID…" style="width:180px;"></div>
+        </div>
+        <div class="table-scroll-wrap" style="max-height:420px;">
+          <table class="results-table">
+            <thead><tr><th>Partner UniProt ID</th><th>Score</th><th>In pilot set?</th></tr></thead>
+            <tbody id="d-ppi-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-annotation">
+      <div class="detail-grid">
+        <div class="panel">
+          <h3>Gene identity</h3>
+          <div class="kv-list" id="d-annotation-kv"></div>
+          <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin:16px 0 8px;">Synonyms</span>
+          <div class="cond-tags" id="d-synonyms" style="max-width:none;"></div>
+        </div>
+        <div class="panel">
+          <h3>Function</h3>
+          <div id="d-function-desc" style="font-size:13px; color:var(--slate); line-height:1.7;"></div>
+          <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin:16px 0 8px;">Subcellular locations</span>
+          <div class="cond-tags" id="d-subcellular" style="max-width:none;"></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:20px;">
+        <h3>Reactome pathways</h3>
+        <div id="d-pathways"></div>
+      </div>
+      <div class="detail-grid" style="margin-top:20px;">
+        <div class="panel">
+          <h3>Gene Ontology — cellular component</h3>
+          <div id="d-go-cc" style="font-size:12.5px; color:var(--slate); line-height:1.8;"></div>
+        </div>
+        <div class="panel">
+          <h3>Gene Ontology — biological process</h3>
+          <div id="d-go-bp" style="font-size:12.5px; color:var(--slate); line-height:1.8;"></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:20px;">
+        <h3>Homologues &amp; tractability</h3>
+        <div class="kv-list" id="d-homology-kv"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-downloads">
+      <div class="detail-grid">
+        <div class="panel">
+          <h3>Associated files</h3>
+          <div id="d-files"></div>
+        </div>
+        <div class="panel">
+          <h3>Programmatic access (planned)</h3>
+          <div class="code-block"><span class="cmt"># pilot record — static JSON for now</span><br>
+fetch('data.json')<br>
+&nbsp;&nbsp;.then(r =&gt; r.json())<br>
+&nbsp;&nbsp;.then(all =&gt; all.find(p =&gt; p.uniprot === <span class="str">'<span id="d-uniprot-code">Q00000</span>'</span>));</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="shell">
+    <div class="footer-row">
+      <div class="fcol">
+        <h4>Kappel Lab Data Website</h4>
+        <div style="max-width:260px; color:var(--muted);">A pilot atlas linking intrinsic disorder, sequence biophysics, and biomolecular condensate membership.</div>
+      </div>
+      <div class="fcol">
+        <h4>Resource</h4>
+        <div>Data &amp; methods</div>
+        <div>Bulk download (planned)</div>
+        <div>Release notes</div>
+      </div>
+      <div class="fcol">
+        <h4>Project</h4>
+        <div>About</div>
+        <div>Contributors</div>
+        <div>Contact</div>
+      </div>
+    </div>
+    <div class="cite-box" id="docs-anchor">
+      <b>Cite this resource:</b> [Authors]. Kappel Lab Data Website: a pilot atlas of intrinsically disordered regions and condensate membership. <i>Journal</i>, 2026. doi:10.xxxx/placeholder.2026 — placeholder citation, update before publishing.
+    </div>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
