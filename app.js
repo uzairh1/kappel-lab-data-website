@@ -558,6 +558,7 @@ function mvPushZoomHistory(isoId){
 }
 
 function mvZoomToCluster(isoId, minPos, maxPos){
+  console.log(`mvZoomToCluster called: isoId=${isoId}, range=${minPos}-${maxPos}`); // debug: confirms this branch fired, not the list branch
   const padding = Math.max(5, Math.round((maxPos - minPos) * 0.15));
   mvPushZoomHistory(isoId);
   mvZoomState[isoId] = { start: Math.max(0, minPos - padding), end: maxPos + padding };
@@ -565,6 +566,7 @@ function mvZoomToCluster(isoId, minPos, maxPos){
 }
 
 function openMvClusterList(variants){
+  console.log(`openMvClusterList called with ${variants.length} variants at position ${variants[0].position}`); // debug: confirms the click IS registering, even if the panel isn't visually obvious
   const panel = document.getElementById("mv-detail-panel");
   panel.style.display = "block";
   panel.innerHTML = `
@@ -582,7 +584,10 @@ function openMvClusterList(variants){
       `).join("")}
     </div>
   `;
-  panel.scrollIntoView({behavior:"smooth", block:"nearest"});
+  panel.scrollIntoView({behavior:"smooth", block:"center"}); // "center" forces real movement, unlike "nearest" which may barely scroll if already partly visible
+  panel.style.transition = "box-shadow 0.15s";
+  panel.style.boxShadow = "0 0 0 3px var(--teal)";
+  setTimeout(()=>{ panel.style.boxShadow = "none"; }, 900); // brief flash so it's unmistakable something happened
 }
 
 function expandIsoform(isoformId){
