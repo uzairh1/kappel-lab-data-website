@@ -747,14 +747,23 @@ async function renderMutantView(p){
     const posToX = pos => isZoomed ? ((pos - viewStart)/viewSpan)*W : (pos/(iso.length||1))*scale;
     const trackColor = iso.dominant ? "#C8781E" : "#8C949C";
 
+    // Fixed-width histogram bins, not open-ended proximity chaining: chaining
+    // alone can merge an entire dense region into ONE cluster spanning most
+    // of the track (confirmed in testing — 2217 uniformly-ish spread
+    // variants chain into a single blob), which technically stops the
+    // overlap but makes clicking it useless (it wouldn't zoom in
+    // meaningfully). Fixed bins guarantee bounded cluster width AND no
+    // overlap, since bins are evenly spaced by construction.
     const withX = pointVariants.map(v => ({ v, x: posToX(v.position) }));
-    const buckets = {};
+    const BIN_WIDTH = 20; // px in track SVG units — also roughly the visual size of a cluster marker
+    const binMap = {};
     withX.forEach(item=>{
-      const key = Math.round(item.x/4)*4;
-      (buckets[key] = buckets[key] || []).push(item);
+      const binIdx = Math.floor(item.x / BIN_WIDTH);
+      (binMap[binIdx] = binMap[binIdx] || []).push(item);
     });
-    const CLUSTER_THRESHOLD = 5; // buckets at/above this render as one cluster marker, not N stacked lollipops
-    const maxBucketSize = Math.max(1, ...Object.values(buckets).map(b=>b.length));
+    const buckets = Object.values(binMap);
+    const CLUSTER_THRESHOLD = 5; // groups at/above this render as one cluster marker, not N stacked lollipops
+    const maxBucketSize = Math.max(1, ...buckets.map(b=>b.length));
     const headroomLevels = Math.min(maxBucketSize, CLUSTER_THRESHOLD) - 1; // clustered buckets only need cluster-marker height, not full stack height
 
     const trackY = 20 + headroomLevels*stemGap + (rangeVariants.length ? rangeLaneH : 0);
@@ -763,7 +772,7 @@ async function renderMutantView(p){
     const rangeLaneY = trackY - (rangeVariants.length ? rangeLaneH - 4 : 0);
 
     let markers = "";
-    Object.values(buckets).forEach(bucket=>{
+    buckets.forEach(bucket=>{
       bucket.sort((a,b)=>a.v.position-b.v.position);
 
       if(bucket.length >= CLUSTER_THRESHOLD){
