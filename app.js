@@ -105,10 +105,16 @@ function drawArchitecture(svgId, p, opts={}){
   p.idr_ranges.forEach(([a,b])=>{
     content += `<rect x="${xScale(a).toFixed(1)}" y="${trackY}" width="${(xScale(b)-xScale(a)).toFixed(1)}" height="${trackH}" fill="#C8781E"/>`;
   });
-  // domains overlay (violet band above track)
+  // domains overlay (violet band above track) with name labels
   p.domains.forEach(d=>{
     const x = xScale(d.start), w = Math.max(2, xScale(d.end)-xScale(d.start));
-    content += `<rect x="${x.toFixed(1)}" y="${(trackY-12).toFixed(1)}" width="${w.toFixed(1)}" height="8" rx="2" fill="#6B4C9A"/>`;
+    const estCharWidth = 5.5; // approx px per character at this font size
+    const canFitLabel = w > d.name.length * estCharWidth;
+    content += `<g>
+      <title>${d.name} (${d.start}-${d.end})</title>
+      <rect x="${x.toFixed(1)}" y="${(trackY-12).toFixed(1)}" width="${w.toFixed(1)}" height="8" rx="2" fill="#6B4C9A"/>
+      ${canFitLabel ? `<text x="${(x+w/2).toFixed(1)}" y="${(trackY-16).toFixed(1)}" font-family="IBM Plex Mono" font-size="9" fill="#4A2E5A" text-anchor="middle">${d.name}</text>` : ''}
+    </g>`;
   });
   // ruler ticks
   const nTicks = 10;
@@ -1121,6 +1127,21 @@ async function loadDetailTabs(uniprot){
 
   // --- Biophysics: region comparison table ---
   const regions = d.biophysics_regions;
+  const p = PROTEINS.find(pr=>pr.uniprot===uniprot);
+  let idrRangesHtml = "";
+  if(p && p.idr_ranges && p.idr_ranges.length){
+    idrRangesHtml = `
+      <div style="margin-bottom:14px;">
+        <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;">
+          ${p.idr_ranges.length} IDR segment${p.idr_ranges.length>1?'s':''}
+        </span>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          ${p.idr_ranges.map(([a,b])=>`<span class="cond-tag">${a}-${b} (${b-a} aa)</span>`).join("")}
+        </div>
+        ${p.idr_ranges.length > 1 ? `<p class="subnote" style="margin-top:8px;">Biophysics below is computed on all ${p.idr_ranges.length} segments concatenated together, not per-segment — the source data doesn't provide a per-segment breakdown.</p>` : ''}
+      </div>`;
+  }
+
   const metricLabels = {
     fcr:"FCR", ncpr:"NCPR", kappa:"κ", delta:"δ", delta_max:"δ max",
     isoelectric_point:"pI", molecular_weight:"MW (Da)", mean_net_charge:"Mean net charge",
@@ -1135,9 +1156,10 @@ async function loadDetailTabs(uniprot){
       <td class="mono">${w ?? '—'}</td><td class="mono">${i ?? '—'}</td><td class="mono">${f ?? '—'}</td></tr>`;
   }
   document.getElementById("d-region-biophysics").innerHTML = `
+    ${idrRangesHtml}
     <div style="overflow-x:auto;">
     <table class="results-table">
-      <thead><tr><th></th><th>Whole protein</th><th>IDR only</th><th>Folded region</th></tr></thead>
+      <thead><tr><th></th><th>Whole protein</th><th>IDR (aggregate${p && p.idr_count > 1 ? `, all ${p.idr_count} segments combined` : ''})</th><th>Folded region</th></tr></thead>
       <tbody>${regionRows}</tbody>
     </table>
     </div>`;
