@@ -79,7 +79,8 @@ def avg_list(lst):
 
 
 def region_biophysics(row, prefix):
-    """Shared metric set used for whole-protein, IDR, and FOLD regions."""
+    """Shared metric set used for whole-protein and FOLD regions -- these
+    ARE genuinely scalar (confirmed: only IDR has multiple segments)."""
     def g(name):
         col = f"{prefix}{name}" if prefix else name
         val = row.get(col)
@@ -94,6 +95,45 @@ def region_biophysics(row, prefix):
         "mean_net_charge": g("mean_net_charge"), "mean_hydropathy": g("mean_hydropathy"),
         "uversky_hydropathy": g("uversky_hydropathy"), "ppii_propensity": g("PPII_propensity"),
     }
+
+def idr_segment_biophysics(row, idr_ranges):
+    """
+    IDR_* biophysics columns are NOT scalar aggregates -- confirmed by
+    direct inspection (CHD3/Q12873: IDR_FCR is a 9-element list, exactly
+    matching its 9 IDR_range segments). Each column is a per-segment list,
+    indexed the same way as idr_ranges. This returns one dict PER SEGMENT,
+    each paired with its [start,end] position, instead of collapsing
+    everything into one misleading aggregate value.
+    """
+    def parse_list_col(name):
+        val = row.get(f"IDR_{name}")
+        if not isinstance(val, str) or not val.strip():
+            return []
+        try:
+            return ast.literal_eval(val)
+        except Exception:
+            return []
+
+    aaf_list = parse_list_col("amino_acid_fractions")
+    cols = {
+        "fcr": parse_list_col("FCR"), "ncpr": parse_list_col("NCPR"), "kappa": parse_list_col("kappa"),
+        "delta": parse_list_col("delta"), "delta_max": parse_list_col("deltaMax"),
+        "isoelectric_point": parse_list_col("isoelectric_point"), "molecular_weight": parse_list_col("molecular_weight"),
+        "count_neg": parse_list_col("countNeg"), "count_pos": parse_list_col("countPos"), "count_neut": parse_list_col("countNeut"),
+        "fraction_negative": parse_list_col("fraction_negative"), "fraction_positive": parse_list_col("fraction_positive"),
+        "fraction_expanding": parse_list_col("fraction_expanding"), "fraction_disorder_promoting": parse_list_col("fraction_disorder_promoting"),
+        "mean_net_charge": parse_list_col("mean_net_charge"), "mean_hydropathy": parse_list_col("mean_hydropathy"),
+        "uversky_hydropathy": parse_list_col("uversky_hydropathy"), "ppii_propensity": parse_list_col("PPII_propensity"),
+    }
+
+    segments = []
+    for i, (start, end) in enumerate(idr_ranges):
+        seg = {"start": start, "end": end, "size": end - start}
+        for key, values in cols.items():
+            seg[key] = values[i] if i < len(values) else None
+        seg["amino_acid_fractions"] = aaf_list[i] if i < len(aaf_list) else None
+        segments.append(seg)
+    return segments
 
 def domain_type_biophysics(row):
     """Domains_* columns are dicts keyed by domain NAME (not occurrence), unlike IDR/FOLD."""
@@ -167,14 +207,15 @@ def main():
             "unique_name": row["UNIQUE"], "description": row["Description"],
         }
 
+        idr_ranges_raw = parse_pylist(row["IDR_range"])
+        idr_ranges = [(int(a), int(b)) for a, b in idr_ranges_raw] if idr_ranges_raw else []
+
         d["biophysics_regions"] = {
             "whole": region_biophysics(row, ""),
-            "idr": region_biophysics(row, "IDR_"),
+            "idr_segments": idr_segment_biophysics(row, idr_ranges),  # one entry per real IDR segment, not one aggregate
             "fold": region_biophysics(row, "FOLD_"),
         }
         d["biophysics_regions"]["whole"]["amino_acid_fractions"] = parse_dict(row["amino_acid_fractions"])
-        d["biophysics_regions"]["idr"]["avg_size"] = None if pd.isna(row["IDR_avg_size"]) else row["IDR_avg_size"]
-        d["biophysics_regions"]["idr"]["amino_acid_fractions"] = parse_dict(row["IDR_amino_acid_fractions"])
         d["biophysics_regions"]["fold"]["avg_size"] = None if pd.isna(row["FOLD_avg_size"]) else row["FOLD_avg_size"]
         d["biophysics_regions"]["fold"]["count"] = None if pd.isna(row["FOLD_count"]) else int(row["FOLD_count"])
         d["region_sequences"] = {

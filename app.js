@@ -1125,23 +1125,9 @@ async function loadDetailTabs(uniprot){
     return;
   }
 
-  // --- Biophysics: region comparison table ---
+  // --- Biophysics: region comparison table, now with REAL per-segment IDR data ---
   const regions = d.biophysics_regions;
-  const p = PROTEINS.find(pr=>pr.uniprot===uniprot);
-  let idrRangesHtml = "";
-  if(p && p.idr_ranges && p.idr_ranges.length){
-    idrRangesHtml = `
-      <div style="margin-bottom:14px;">
-        <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;">
-          ${p.idr_ranges.length} IDR segment${p.idr_ranges.length>1?'s':''}
-        </span>
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          ${p.idr_ranges.map(([a,b])=>`<span class="cond-tag">${a}-${b} (${b-a} aa)</span>`).join("")}
-        </div>
-        ${p.idr_ranges.length > 1 ? `<p class="subnote" style="margin-top:8px;">Biophysics below is computed on all ${p.idr_ranges.length} segments concatenated together, not per-segment — the source data doesn't provide a per-segment breakdown.</p>` : ''}
-      </div>`;
-  }
-
+  const idrSegments = regions.idr_segments || [];
   const metricLabels = {
     fcr:"FCR", ncpr:"NCPR", kappa:"κ", delta:"δ", delta_max:"δ max",
     isoelectric_point:"pI", molecular_weight:"MW (Da)", mean_net_charge:"Mean net charge",
@@ -1149,20 +1135,38 @@ async function loadDetailTabs(uniprot){
     fraction_negative:"Fraction negative", fraction_positive:"Fraction positive",
     fraction_expanding:"Fraction expanding", fraction_disorder_promoting:"Fraction disorder-promoting",
   };
+  const fmt = v => (typeof v === "number") ? (Number.isInteger(v) ? v : v.toFixed(3)) : (v ?? '—');
+
   let regionRows = "";
   for(const [key,label] of Object.entries(metricLabels)){
-    const w = regions.whole?.[key], i = regions.idr?.[key], f = regions.fold?.[key];
+    const w = regions.whole?.[key], f = regions.fold?.[key];
+    const segCells = idrSegments.map(seg => `<td class="mono">${fmt(seg[key])}</td>`).join("");
     regionRows += `<tr><td class="gene-sym" style="font-size:12.5px;">${label}</td>
-      <td class="mono">${w ?? '—'}</td><td class="mono">${i ?? '—'}</td><td class="mono">${f ?? '—'}</td></tr>`;
+      <td class="mono">${fmt(w)}</td>${segCells}<td class="mono">${fmt(f)}</td></tr>`;
   }
-  document.getElementById("d-region-biophysics").innerHTML = `
-    ${idrRangesHtml}
+  const idrHeaders = idrSegments.map((seg,i) =>
+    `<th>IDR ${i+1}<br><span class="mono" style="font-weight:400; color:var(--faint); font-size:10.5px;">${seg.start}-${seg.end} (${seg.size} aa)</span></th>`
+  ).join("");
+
+  document.getElementById("d-region-biophysics").innerHTML = idrSegments.length ? `
     <div style="overflow-x:auto;">
     <table class="results-table">
-      <thead><tr><th></th><th>Whole protein</th><th>IDR (aggregate${p && p.idr_count > 1 ? `, all ${p.idr_count} segments combined` : ''})</th><th>Folded region</th></tr></thead>
+      <thead><tr><th></th><th>Whole protein</th>${idrHeaders}<th>Folded region</th></tr></thead>
       <tbody>${regionRows}</tbody>
     </table>
-    </div>`;
+    </div>
+    <p class="subnote" style="margin-top:10px;">Each IDR segment shown separately — these are real per-segment values from the source data (confirmed: not a computed aggregate), not an average across all disordered regions.</p>
+  ` : `
+    <div style="overflow-x:auto;">
+    <table class="results-table">
+      <thead><tr><th></th><th>Whole protein</th><th>Folded region</th></tr></thead>
+      <tbody>${Object.entries(metricLabels).map(([key,label])=>
+        `<tr><td class="gene-sym" style="font-size:12.5px;">${label}</td><td class="mono">${fmt(regions.whole?.[key])}</td><td class="mono">${fmt(regions.fold?.[key])}</td></tr>`
+      ).join("")}</tbody>
+    </table>
+    </div>
+    <p class="empty-note">No IDR segments annotated for this protein.</p>
+  `;
 
   // --- Domain-type biophysics ---
   const dtWrap = document.getElementById("d-domain-types-wrap");
