@@ -87,12 +87,31 @@ function buildHeroTrack(){
 }
 
 /* Shared architecture drawing: folded regions, IDR regions, named domains */
+// Distinct per-domain-name colors, assigned PER PROTEIN (not global) -- a
+// given color means something different from one protein's legend to the
+// next, since domain name sets vary widely across proteins.
+const DOMAIN_COLOR_PALETTE = ["#6B4C9A","#B5433A","#1D6E63","#C8781E","#3E4A52","#2C6E9E","#9A4C7A"];
+function buildDomainColorMap(domains){
+  const names = [...new Set(domains.map(d=>d.name))];
+  const map = {};
+  names.forEach((name,i)=>{ map[name] = DOMAIN_COLOR_PALETTE[i % DOMAIN_COLOR_PALETTE.length]; });
+  return map;
+}
+function domainLegendHtml(domainColorMap){
+  const entries = Object.entries(domainColorMap);
+  if(!entries.length) return "";
+  return `<div class="track-legend" style="margin-top:10px;">
+    ${entries.map(([name,color])=>`<span><i class="swatch" style="background:${color}"></i>${name}</span>`).join("")}
+  </div>`;
+}
+
 function drawArchitecture(svgId, p, opts={}){
   const svg = document.getElementById(svgId);
   const W = 1116, H = opts.H || 150;
   const trackY = H*0.42, trackH = 26;
   const len = p.length || 1;
   const xScale = x => (x/len) * W;
+  const domainColorMap = buildDomainColorMap(p.domains);
 
   let content = "";
   // baseline
@@ -105,15 +124,16 @@ function drawArchitecture(svgId, p, opts={}){
   p.idr_ranges.forEach(([a,b])=>{
     content += `<rect x="${xScale(a).toFixed(1)}" y="${trackY}" width="${(xScale(b)-xScale(a)).toFixed(1)}" height="${trackH}" fill="#C8781E"/>`;
   });
-  // domains overlay (violet band above track) with name labels
+  // domains overlay, colored per domain name (see legend built alongside this call) with name labels
   p.domains.forEach(d=>{
     const x = xScale(d.start), w = Math.max(2, xScale(d.end)-xScale(d.start));
+    const color = domainColorMap[d.name];
     const estCharWidth = 5.5; // approx px per character at this font size
     const canFitLabel = w > d.name.length * estCharWidth;
     content += `<g>
       <title>${d.name} (${d.start}-${d.end})</title>
-      <rect x="${x.toFixed(1)}" y="${(trackY-12).toFixed(1)}" width="${w.toFixed(1)}" height="8" rx="2" fill="#6B4C9A"/>
-      ${canFitLabel ? `<text x="${(x+w/2).toFixed(1)}" y="${(trackY-16).toFixed(1)}" font-family="IBM Plex Mono" font-size="9" fill="#4A2E5A" text-anchor="middle">${d.name}</text>` : ''}
+      <rect x="${x.toFixed(1)}" y="${(trackY-12).toFixed(1)}" width="${w.toFixed(1)}" height="8" rx="2" fill="${color}"/>
+      ${canFitLabel ? `<text x="${(x+w/2).toFixed(1)}" y="${(trackY-16).toFixed(1)}" font-family="IBM Plex Mono" font-size="9" fill="${color}" text-anchor="middle">${d.name}</text>` : ''}
     </g>`;
   });
   // ruler ticks
@@ -1026,7 +1046,7 @@ function openProteinById(uniprot){
     <span><i class="swatch" style="background:#3E4A52"></i> Folded region</span>
     <span><i class="swatch" style="background:#C8781E"></i> Predicted IDR</span>
     <span><i class="swatch" style="background:#6B4C9A"></i> Named domain</span>
-  `;
+  ` + domainLegendHtml(buildDomainColorMap(p.domains));
 
   const condHtml = p.condensates.length
     ? p.condensates.map((c,i)=>{
