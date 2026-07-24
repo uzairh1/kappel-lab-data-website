@@ -1157,12 +1157,58 @@ const IDR_METRIC_LABELS = {
   fraction_expanding:"Fraction expanding", fraction_disorder_promoting:"Fraction disorder-promoting",
 };
 let idrMinSegmentSize = 0;
+let idrExcludedSegments = new Set(); // segment indices explicitly unchecked
+const IDR_DEFAULT_METRICS = ["fcr","ncpr","kappa","mean_hydropathy","isoelectric_point","molecular_weight"];
+let idrActiveMetrics = new Set(IDR_DEFAULT_METRICS);
 
 document.getElementById("idr-min-size").addEventListener("input", e=>{
   idrMinSegmentSize = parseInt(e.target.value, 10);
   document.getElementById("idr-min-size-val").textContent = idrMinSegmentSize + " aa+";
   renderRegionBiophysicsTable();
 });
+
+document.getElementById("idr-metrics-toggle-btn").addEventListener("click", ()=>{
+  document.getElementById("idr-metrics-panel").classList.toggle("open");
+});
+document.addEventListener("click", (e)=>{
+  const dd = document.getElementById("idr-metrics-dropdown");
+  if(dd && !dd.contains(e.target)) document.getElementById("idr-metrics-panel").classList.remove("open");
+});
+
+function buildIdrMetricsPanel(){
+  const panel = document.getElementById("idr-metrics-panel");
+  panel.innerHTML = `<h5>Show / hide metrics</h5>` + Object.entries(IDR_METRIC_LABELS).map(([key,label])=>`
+    <label class="col-opt">
+      <input type="checkbox" data-metric="${key}" ${idrActiveMetrics.has(key)?'checked':''}>
+      ${label}
+    </label>
+  `).join("");
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener("change", e=>{
+      const key = e.target.dataset.metric;
+      if(e.target.checked) idrActiveMetrics.add(key); else idrActiveMetrics.delete(key);
+      renderRegionBiophysicsTable();
+    });
+  });
+}
+
+function buildIdrSegmentCheckboxes(allSegments){
+  const container = document.getElementById("idr-segment-checkboxes");
+  if(!allSegments.length){ container.innerHTML = ""; return; }
+  container.innerHTML = `<span style="color:var(--slate);">Segments:</span>` + allSegments.map((seg,i)=>`
+    <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; margin-right:8px;">
+      <input type="checkbox" data-seg-idx="${i}" ${idrExcludedSegments.has(i)?'':'checked'} style="accent-color:var(--teal);">
+      IDR ${i+1}
+    </label>
+  `).join("");
+  container.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener("change", e=>{
+      const idx = parseInt(e.target.dataset.segIdx, 10);
+      if(e.target.checked) idrExcludedSegments.delete(idx); else idrExcludedSegments.add(idx);
+      renderRegionBiophysicsTable();
+    });
+  });
+}
 
 function renderRegionBiophysicsTable(){
   const d = currentDetails;
@@ -1173,8 +1219,11 @@ function renderRegionBiophysicsTable(){
 
   const regions = d.biophysics_regions;
   const allSegments = regions.idr_segments || [];
-  const idrSegments = allSegments.filter(seg => seg.size >= idrMinSegmentSize);
-  const activeMetricEntries = Object.entries(IDR_METRIC_LABELS);
+  buildIdrSegmentCheckboxes(allSegments);
+  buildIdrMetricsPanel();
+
+  const idrSegments = allSegments.filter((seg,i) => seg.size >= idrMinSegmentSize && !idrExcludedSegments.has(i));
+  const activeMetricEntries = Object.entries(IDR_METRIC_LABELS).filter(([key]) => idrActiveMetrics.has(key));
   const fmt = v => (typeof v === "number") ? (Number.isInteger(v) ? v : v.toFixed(3)) : (v ?? '—');
 
   let regionRows = "";
@@ -1191,7 +1240,7 @@ function renderRegionBiophysicsTable(){
 
   const hiddenCount = allSegments.length - idrSegments.length;
   const filterNote = hiddenCount > 0
-    ? `<p class="subnote" style="margin-top:10px;">${hiddenCount} segment${hiddenCount>1?'s':''} under ${idrMinSegmentSize} aa hidden by the size filter above — not deleted, just filtered from view.</p>`
+    ? `<p class="subnote" style="margin-top:10px;">${hiddenCount} segment${hiddenCount>1?'s':''} hidden by the filters above (size threshold and/or unchecked) — not deleted, just filtered from view.</p>`
     : '';
 
   document.getElementById("d-region-biophysics").innerHTML = allSegments.length ? `
