@@ -214,7 +214,6 @@ function buildFeatured(){
 const COLUMNS = [
   {key:"gene", label:"Gene", locked:true, default:true},
   {key:"uniprot", label:"UniProt ID", locked:true, default:true},
-  {key:"isoform", label:"Isoform / variant", default:true},
   {key:"dominant", label:"Dominant isoform", default:true},
   {key:"condensate", label:"Condensate formation", default:true},
   {key:"idr", label:"IDR prediction (% disordered)", default:true},
@@ -294,7 +293,6 @@ function cellFor(key, p){
   switch(key){
     case "gene": return `<span class="gene-sym">${p.gene}</span>`;
     case "uniprot": return `<span class="uid">${p.uniprot}</span>`;
-    case "isoform": return p.isoform_label ? p.isoform_label : `variant ${p.isoform_number}`;
     case "dominant": return p.dominant ? `<span class="badge dominant">Dominant</span>` : `<span class="badge no">Alt.</span>`;
     case "condensate": return p.condensate_forming
         ? `<div class="cond-tags">${p.condensates.slice(0,2).map(c=>`<span class="cond-tag">${c}</span>`).join("")}${p.condensates.length>2?`<span class="cond-tag">+${p.condensates.length-2}</span>`:''}</div>`
@@ -1125,49 +1123,79 @@ async function loadDetailTabs(uniprot){
     return;
   }
 
-  // --- Biophysics: region comparison table, now with REAL per-segment IDR data ---
+  renderRegionBiophysicsTable();
+  renderRemainingDetailTabs(d);
+}
+
+// default to a compact, commonly-relevant subset; full 15 available via the Metrics toggle
+const IDR_METRIC_LABELS = {
+  fcr:"FCR", ncpr:"NCPR", kappa:"κ", delta:"δ", delta_max:"δ max",
+  isoelectric_point:"pI", molecular_weight:"MW (Da)", mean_net_charge:"Mean net charge",
+  mean_hydropathy:"Mean hydropathy", uversky_hydropathy:"Uversky hydropathy", ppii_propensity:"PPII propensity",
+  fraction_negative:"Fraction negative", fraction_positive:"Fraction positive",
+  fraction_expanding:"Fraction expanding", fraction_disorder_promoting:"Fraction disorder-promoting",
+};
+let idrMinSegmentSize = 0;
+
+document.getElementById("idr-min-size").addEventListener("input", e=>{
+  idrMinSegmentSize = parseInt(e.target.value, 10);
+  document.getElementById("idr-min-size-val").textContent = idrMinSegmentSize + " aa+";
+  renderRegionBiophysicsTable();
+});
+
+function renderRegionBiophysicsTable(){
+  const d = currentDetails;
+  if(!d || !d.biophysics_regions){
+    document.getElementById("d-region-biophysics").innerHTML = `<span class="empty-note">No extended record for this protein in the current release.</span>`;
+    return;
+  }
+
   const regions = d.biophysics_regions;
-  const idrSegments = regions.idr_segments || [];
-  const metricLabels = {
-    fcr:"FCR", ncpr:"NCPR", kappa:"κ", delta:"δ", delta_max:"δ max",
-    isoelectric_point:"pI", molecular_weight:"MW (Da)", mean_net_charge:"Mean net charge",
-    mean_hydropathy:"Mean hydropathy", uversky_hydropathy:"Uversky hydropathy", ppii_propensity:"PPII propensity",
-    fraction_negative:"Fraction negative", fraction_positive:"Fraction positive",
-    fraction_expanding:"Fraction expanding", fraction_disorder_promoting:"Fraction disorder-promoting",
-  };
+  const allSegments = regions.idr_segments || [];
+  const idrSegments = allSegments.filter(seg => seg.size >= idrMinSegmentSize);
+  const activeMetricEntries = Object.entries(IDR_METRIC_LABELS);
   const fmt = v => (typeof v === "number") ? (Number.isInteger(v) ? v : v.toFixed(3)) : (v ?? '—');
 
   let regionRows = "";
-  for(const [key,label] of Object.entries(metricLabels)){
+  for(const [key,label] of activeMetricEntries){
     const w = regions.whole?.[key], f = regions.fold?.[key];
     const segCells = idrSegments.map(seg => `<td class="mono">${fmt(seg[key])}</td>`).join("");
     regionRows += `<tr><td class="gene-sym" style="font-size:12.5px;">${label}</td>
       <td class="mono">${fmt(w)}</td>${segCells}<td class="mono">${fmt(f)}</td></tr>`;
   }
-  const idrHeaders = idrSegments.map((seg,i) =>
-    `<th>IDR ${i+1}<br><span class="mono" style="font-weight:400; color:var(--faint); font-size:10.5px;">${seg.start}-${seg.end} (${seg.size} aa)</span></th>`
-  ).join("");
+  const idrHeaders = idrSegments.map((seg) => {
+    const realIdx = allSegments.indexOf(seg) + 1; // keep original numbering even when filtered
+    return `<th>IDR ${realIdx}<br><span class="mono" style="font-weight:400; color:var(--faint); font-size:10.5px;">${seg.start}-${seg.end} (${seg.size} aa)</span></th>`;
+  }).join("");
 
-  document.getElementById("d-region-biophysics").innerHTML = idrSegments.length ? `
+  const hiddenCount = allSegments.length - idrSegments.length;
+  const filterNote = hiddenCount > 0
+    ? `<p class="subnote" style="margin-top:10px;">${hiddenCount} segment${hiddenCount>1?'s':''} under ${idrMinSegmentSize} aa hidden by the size filter above — not deleted, just filtered from view.</p>`
+    : '';
+
+  document.getElementById("d-region-biophysics").innerHTML = allSegments.length ? `
     <div style="overflow-x:auto;">
     <table class="results-table">
       <thead><tr><th></th><th>Whole protein</th>${idrHeaders}<th>Folded region</th></tr></thead>
       <tbody>${regionRows}</tbody>
     </table>
     </div>
-    <p class="subnote" style="margin-top:10px;">Each IDR segment shown separately — these are real per-segment values from the source data (confirmed: not a computed aggregate), not an average across all disordered regions.</p>
+    <p class="subnote" style="margin-top:10px;">Each IDR segment shown separately — these are real per-segment values from the source data, not an average across all disordered regions.</p>
+    ${filterNote}
   ` : `
     <div style="overflow-x:auto;">
     <table class="results-table">
       <thead><tr><th></th><th>Whole protein</th><th>Folded region</th></tr></thead>
-      <tbody>${Object.entries(metricLabels).map(([key,label])=>
+      <tbody>${activeMetricEntries.map(([key,label])=>
         `<tr><td class="gene-sym" style="font-size:12.5px;">${label}</td><td class="mono">${fmt(regions.whole?.[key])}</td><td class="mono">${fmt(regions.fold?.[key])}</td></tr>`
       ).join("")}</tbody>
     </table>
     </div>
     <p class="empty-note">No IDR segments annotated for this protein.</p>
   `;
+}
 
+function renderRemainingDetailTabs(d){
   // --- Domain-type biophysics ---
   const dtWrap = document.getElementById("d-domain-types-wrap");
   if(!d.domain_types.length){
