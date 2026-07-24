@@ -100,9 +100,11 @@ function buildDomainColorMap(domains){
 function domainLegendHtml(domainColorMap){
   const entries = Object.entries(domainColorMap);
   if(!entries.length) return "";
-  return `<div class="track-legend" style="margin-top:10px;">
-    ${entries.map(([name,color])=>`<span><i class="swatch" style="background:${color}"></i>${name}</span>`).join("")}
-  </div>`;
+  // NOTE: plain spans here, matching the sibling legend items exactly --
+  // wrapping in another .track-legend div (also flex, with its own margin)
+  // makes it a flex-ITEM inside the already-flex parent, which visually
+  // sits slightly below its siblings instead of sharing their baseline.
+  return entries.map(([name,color])=>`<span><i class="swatch" style="background:${color}"></i>${name}</span>`).join("");
 }
 
 function drawArchitecture(svgId, p, opts={}){
@@ -1045,7 +1047,6 @@ function openProteinById(uniprot){
   document.getElementById("d-arch-legend").innerHTML = `
     <span><i class="swatch" style="background:#3E4A52"></i> Folded region</span>
     <span><i class="swatch" style="background:#C8781E"></i> Predicted IDR</span>
-    <span><i class="swatch" style="background:#6B4C9A"></i> Named domain</span>
   ` + domainLegendHtml(buildDomainColorMap(p.domains));
 
   const condHtml = p.condensates.length
