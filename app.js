@@ -40,6 +40,8 @@ function init(){
   badge.style.display = "inline-block";
   badge.textContent = USING_LIVE_API ? "● live API" : "○ static demo data";
   badge.style.color = USING_LIVE_API ? "var(--teal)" : "var(--faint)";
+  document.getElementById("api-only-filters").style.display = USING_LIVE_API ? "flex" : "none";
+  document.getElementById("api-only-filters-divider").style.display = USING_LIVE_API ? "block" : "none";
   buildHeroTrack();
   buildStats();
   buildCondensateChips();
@@ -310,6 +312,21 @@ document.getElementById("disorder-range").addEventListener("input", e=>{
   document.getElementById("disorder-range-val").textContent = minDisorder + "%+";
   renderResults();
 });
+document.getElementById("condensatopathy-select").addEventListener("change", e=>{
+  condensatopathyFilter = e.target.value; renderResults();
+});
+document.getElementById("ppi-partner-filter").addEventListener("change", e=>{
+  ppiPartnerFilter = e.target.value; renderResults();
+});
+document.getElementById("go-term-filter").addEventListener("change", e=>{
+  goTermFilter = e.target.value; renderResults();
+});
+document.getElementById("idr-kappa-min").addEventListener("change", e=>{
+  idrKappaMin = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
+});
+document.getElementById("idr-kappa-max").addEventListener("change", e=>{
+  idrKappaMax = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
+});
 
 function cellFor(key, p){
   switch(key){
@@ -348,7 +365,132 @@ function cellFor(key, p){
   }
 }
 
-function renderResults(){
+// real min/max bounds computed from the actual dataset, not guessed
+const NUMERIC_FILTER_FIELDS = [
+  {key:"length", label:"Sequence length (aa)", min:98, max:2376, step:1},
+  {key:"idr_count", label:"IDR count", min:0, max:9, step:1},
+  {key:"idr_total_size", label:"IDR total size (aa)", min:0, max:1178, step:1},
+  {key:"fold_total_size", label:"Folded total size (aa)", min:0, max:2063, step:1},
+  {key:"ppi_partner_count", label:"PPI partners", min:0, max:2263, step:1},
+  {key:"fcr", label:"FCR", min:0.146, max:0.499, step:0.001},
+  {key:"ncpr", label:"NCPR", min:-0.186, max:0.157, step:0.001},
+  {key:"kappa", label:"κ (kappa)", min:0.100, max:0.335, step:0.001},
+  {key:"mean_hydropathy", label:"Mean hydropathy", min:2.808, max:4.528, step:0.01},
+  {key:"isoelectric_point", label:"Isoelectric point", min:3.72, max:12.8, step:0.01},
+  {key:"molecular_weight", label:"Molecular weight (Da)", min:11141, max:266986, step:1},
+  {key:"saturation_conc_uM", label:"Csat (µM)", min:2.92, max:66465, step:0.01},
+  {key:"delta_g_kt", label:"ΔG (kT)", min:-7.423, max:0.249, step:0.001},
+  {key:"disease_count", label:"Disease associations", min:16, max:2343, step:1},
+];
+let numericFilterState = {}; // { [key]: {min, max} } -- only present when actively narrowed from the full range
+
+function buildMetricFiltersPanel(){
+  const panel = document.getElementById("metric-filters-panel");
+  panel.innerHTML = `<h5>Filter by value range</h5>
+    <div style="margin-bottom:10px;"><a href="javascript:void(0)" id="metric-filters-reset" style="font-size:11.5px; color:var(--teal); text-decoration:underline;">Reset all</a></div>
+    ` + NUMERIC_FILTER_FIELDS.map(f=>{
+      const current = numericFilterState[f.key] || {min:f.min, max:f.max};
+      return `<div style="margin-bottom:12px;">
+        <div style="font-size:12px; color:var(--slate); margin-bottom:4px;">${f.label}</div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <input type="number" data-field="${f.key}" data-bound="min" value="${current.min}" min="${f.min}" max="${f.max}" step="${f.step}" style="width:90px; font-family:var(--font-mono); font-size:11.5px; padding:4px 6px; border:1px solid var(--line-strong); border-radius:5px;">
+          <span style="color:var(--faint); font-size:11px;">to</span>
+          <input type="number" data-field="${f.key}" data-bound="max" value="${current.max}" min="${f.min}" max="${f.max}" step="${f.step}" style="width:90px; font-family:var(--font-mono); font-size:11.5px; padding:4px 6px; border:1px solid var(--line-strong); border-radius:5px;">
+        </div>
+      </div>`;
+    }).join("");
+
+  panel.querySelectorAll('input[type=number]').forEach(inp=>{
+    inp.addEventListener("change", e=>{
+      const key = e.target.dataset.field;
+      const bound = e.target.dataset.bound;
+      const fieldDef = NUMERIC_FILTER_FIELDS.find(f=>f.key===key);
+      const current = numericFilterState[key] || {min:fieldDef.min, max:fieldDef.max};
+      current[bound] = parseFloat(e.target.value);
+      numericFilterState[key] = current;
+      currentPage = 1;
+      renderResults();
+    });
+  });
+  document.getElementById("metric-filters-reset").addEventListener("click", ()=>{
+    numericFilterState = {};
+    currentPage = 1;
+    renderResults();
+    buildMetricFiltersPanel(); // rebuild so inputs visually reset to full bounds
+  });
+}
+buildMetricFiltersPanel();
+document.getElementById("metric-filters-toggle-btn").addEventListener("click", ()=>{
+  document.getElementById("metric-filters-panel").classList.toggle("open");
+});
+document.addEventListener("click", (e)=>{
+  const dd = document.getElementById("metric-filters-dropdown");
+  if(dd && !dd.contains(e.target)) document.getElementById("metric-filters-panel").classList.remove("open");
+});
+
+// new filter state -- only meaningful via the live API (condensatopathy,
+// PPI partner, and GO term don't exist anywhere in the static data.json,
+// so these controls are hidden entirely on the static fallback)
+let condensatopathyFilter = "";
+let ppiPartnerFilter = "";
+let goTermFilter = "";
+let idrKappaMin = null;
+let idrKappaMax = null;
+
+async function renderResults(){
+  if(USING_LIVE_API){
+    await renderResultsFromAPI();
+  } else {
+    renderResultsFromStatic();
+  }
+}
+
+async function renderResultsFromAPI(){
+  const params = new URLSearchParams({limit: 200, offset: 0});
+  if(currentQuery.trim()) params.set("q", currentQuery.trim());
+  if(condensateOnly === "yes") params.set("condensate_forming", "true");
+  if(condensateOnly === "no") params.set("condensate_forming", "false");
+  if(dominantOnly === "yes") params.set("dominant", "true");
+  if(dominantOnly === "no") params.set("dominant", "false");
+  if(currentCondensateFilter) params.set("condensate", currentCondensateFilter);
+  if(minDisorder) params.set("min_disorder_fraction", (minDisorder/100).toFixed(2));
+  if(condensatopathyFilter) params.set("condensatopathy", condensatopathyFilter);
+  if(ppiPartnerFilter.trim()) params.set("ppi_partner", ppiPartnerFilter.trim());
+  if(goTermFilter.trim()) params.set("go_term", goTermFilter.trim());
+  if(idrKappaMin !== null) params.set("min_idr_kappa", idrKappaMin);
+  if(idrKappaMax !== null) params.set("max_idr_kappa", idrKappaMax);
+  for(const [key, range] of Object.entries(numericFilterState)){
+    params.set(`min_${key}`, range.min);
+    params.set(`max_${key}`, range.max);
+  }
+
+  let payload;
+  try{
+    const res = await fetch(`${API_BASE}/proteins?${params}`, {signal: AbortSignal.timeout(5000)});
+    if(!res.ok) throw new Error(`API returned ${res.status}`);
+    payload = await res.json();
+  } catch(err){
+    console.log("Live filtering failed, falling back to static client-side filtering for this render —", err.message);
+    renderResultsFromStatic();
+    return;
+  }
+
+  document.getElementById("results-n").textContent = payload.count;
+  document.getElementById("search-title").textContent = currentQuery ? `Results for "${currentQuery}"` : (currentCondensateFilter ? `Condensate: ${currentCondensateFilter}` : "All proteins");
+
+  const cols = COLUMNS.filter(c=>activeColumns.has(c.key));
+  const thead = document.getElementById("results-thead");
+  thead.innerHTML = `<tr>${cols.map(c=>`<th>${c.label}</th>`).join("")}</tr>`;
+
+  const tbody = document.getElementById("results-body");
+  tbody.innerHTML = payload.results.map(p=>`
+    <tr onclick="openProteinById('${p.uniprot}')">
+      ${cols.map(c=>`<td>${cellFor(c.key,p)}</td>`).join("")}
+    </tr>
+  `).join("") || `<tr><td colspan="${cols.length}" style="padding:28px; text-align:center; color:var(--faint);">No proteins match these filters.</td></tr>`;
+}
+
+function renderResultsFromStatic(){
   const q = currentQuery.trim().toLowerCase();
   let filtered = PROTEINS.filter(p=>{
     if(q && !(p.gene.toLowerCase().includes(q) || p.uniprot.toLowerCase().includes(q))) return false;
@@ -358,6 +500,11 @@ function renderResults(){
     if(dominantOnly==="no" && p.dominant) return false;
     if(currentCondensateFilter && !p.condensates.includes(currentCondensateFilter)) return false;
     if((p.disorder_fraction||0)*100 < minDisorder) return false;
+    for(const [key, range] of Object.entries(numericFilterState)){
+      const val = p[key];
+      if(val === null || val === undefined) return false; // no value -- can't satisfy a range constraint
+      if(val < range.min || val > range.max) return false;
+    }
     return true;
   });
 

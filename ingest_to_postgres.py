@@ -46,7 +46,7 @@ def ingest_proteins():
     rows = [(
         p["uniprot"], p["gene"], p.get("ensg"), p.get("dominant"), p.get("isoform_number"),
         p.get("isoform_label"), p.get("length"), p.get("idr_count"), p.get("idr_total_size"),
-        p.get("fold_total_size"), json.dumps(p.get("idr_ranges")), json.dumps(p.get("fold_ranges")),
+        p.get("fold_total_size"), p.get("disorder_fraction"), json.dumps(p.get("idr_ranges")), json.dumps(p.get("fold_ranges")),
         json.dumps(p.get("domains")), p.get("condensates"), p.get("condensate_types"),
         p.get("condensate_confidence"), p.get("condensate_forming"), p.get("fcr"), p.get("ncpr"),
         p.get("kappa"), p.get("mean_hydropathy"), p.get("isoelectric_point"), p.get("molecular_weight"),
@@ -57,7 +57,7 @@ def ingest_proteins():
     execute_values(cur, """
         INSERT INTO proteins (
             uniprot, gene, ensg, dominant, isoform_number, isoform_label, length,
-            idr_count, idr_total_size, fold_total_size, idr_ranges, fold_ranges, domains,
+            idr_count, idr_total_size, fold_total_size, disorder_fraction, idr_ranges, fold_ranges, domains,
             condensates, condensate_types, condensate_confidence, condensate_forming,
             fcr, ncpr, kappa, mean_hydropathy, isoelectric_point, molecular_weight,
             saturation_conc_uM, delta_g_kt, ppi_partner_count, disease_count, variant_stats
@@ -67,6 +67,7 @@ def ingest_proteins():
             isoform_number=EXCLUDED.isoform_number, isoform_label=EXCLUDED.isoform_label,
             length=EXCLUDED.length, idr_count=EXCLUDED.idr_count,
             idr_total_size=EXCLUDED.idr_total_size, fold_total_size=EXCLUDED.fold_total_size,
+            disorder_fraction=EXCLUDED.disorder_fraction,
             idr_ranges=EXCLUDED.idr_ranges, fold_ranges=EXCLUDED.fold_ranges, domains=EXCLUDED.domains,
             condensates=EXCLUDED.condensates, condensate_types=EXCLUDED.condensate_types,
             condensate_confidence=EXCLUDED.condensate_confidence, condensate_forming=EXCLUDED.condensate_forming,
@@ -153,10 +154,104 @@ def ingest_variants():
               f"(ingest_proteins() must run first, or these are stale/orphaned entries): {skipped_proteins}")
 
 
+def ingest_protein_detail_tables():
+    """Populates condensate_details, ppi_partners, idr_segments, go_terms
+    from protein_details/*.json -- the data that used to only exist in
+    lazy-loaded per-protein files, now queryable/filterable across all
+    proteins at once."""
+    details_dir = "protein_details"
+    if not os.path.isdir(details_dir):
+        print("No protein_details/ directory found -- skipping detail table ingestion.")
+        return
+
+    cur.execute("SELECT uniprot FROM proteins")
+    known_proteins = {row[0] for row in cur.fetchall()}
+
+    # condensate NAME/type/confidence live in data.json's parallel arrays
+    # (aligned by index to condensate_details), not in protein_details
+    # itself -- confirmed by direct inspection, not assumed
+    proteins_raw = {p["uniprot"]: p for p in json.load(open("data.json"))}
+
+    for table in ["condensate_details", "ppi_partners", "idr_segments", "go_terms"]:
+        cur.execute(f"DELETE FROM {table}")  # full refresh, same reasoning as diseases/variants
+
+    condensate_rows, ppi_rows, idr_rows, go_rows = [], [], [], []
+    skipped = []
+
+    for fname in os.listdir(details_dir):
+        if not fname.endswith(".json"):
+            continue
+        uniprot = fname[:-5]
+        if uniprot not in known_proteins:
+            skipped.append(uniprot)
+            continue
+        d = json.load(open(os.path.join(details_dir, fname)))
+        raw_p = proteins_raw.get(uniprot, {})
+        cond_names = raw_p.get("condensates", [])
+        cond_types = raw_p.get("condensate_types", [])
+        cond_confidence = raw_p.get("condensate_confidence", [])
+
+        for i, cd in enumerate(d.get("condensate_details", [])):
+            condensate_rows.append((
+                uniprot,
+                cond_names[i] if i < len(cond_names) else None,
+                cond_types[i] if i < len(cond_types) else None,
+                cond_confidence[i] if i < len(cond_confidence) else None,
+                cd.get("species_tax_id"), cd.get("dna_associated"), cd.get("rna_associated"),
+                cd.get("chemical_mods"), cd.get("condensatopathy"),
+            ))
+
+        for p in d.get("ppi", {}).get("all_partners", []):
+            partner_id = p.get("uniprot")
+            ppi_rows.append((uniprot, partner_id, p.get("score"), partner_id in known_proteins))
+
+        for i, seg in enumerate(d.get("biophysics_regions", {}).get("idr_segments", [])):
+            idr_rows.append((
+                uniprot, i + 1, seg.get("start"), seg.get("end"), seg.get("size"),
+                seg.get("fcr"), seg.get("ncpr"), seg.get("kappa"), seg.get("delta"), seg.get("delta_max"),
+                seg.get("isoelectric_point"), seg.get("molecular_weight"), seg.get("mean_net_charge"),
+                seg.get("mean_hydropathy"), seg.get("uversky_hydropathy"), seg.get("ppii_propensity"),
+                seg.get("fraction_negative"), seg.get("fraction_positive"),
+                seg.get("fraction_expanding"), seg.get("fraction_disorder_promoting"),
+            ))
+
+        for aspect, terms in d.get("go_terms", {}).items():
+            for t in terms:
+                go_rows.append((uniprot, aspect, t.get("id"), t.get("description"), t.get("evidence")))
+
+    if condensate_rows:
+        execute_values(cur, """
+            INSERT INTO condensate_details (uniprot, condensate_name, condensate_type, confidence,
+                species_tax_id, dna_associated, rna_associated, chemical_mods, condensatopathy) VALUES %s
+        """, condensate_rows, page_size=1000)
+    if ppi_rows:
+        execute_values(cur, """
+            INSERT INTO ppi_partners (uniprot, partner_uniprot, score, partner_in_pilot_set) VALUES %s
+        """, ppi_rows, page_size=1000)
+    if idr_rows:
+        execute_values(cur, """
+            INSERT INTO idr_segments (uniprot, segment_index, start_pos, end_pos, size,
+                fcr, ncpr, kappa, delta, delta_max, isoelectric_point, molecular_weight,
+                mean_net_charge, mean_hydropathy, uversky_hydropathy, ppii_propensity,
+                fraction_negative, fraction_positive, fraction_expanding, fraction_disorder_promoting) VALUES %s
+        """, idr_rows, page_size=1000)
+    if go_rows:
+        execute_values(cur, """
+            INSERT INTO go_terms (uniprot, aspect, go_id, description, evidence) VALUES %s
+        """, go_rows, page_size=1000)
+    conn.commit()
+
+    print(f"Ingested {len(condensate_rows)} condensate_details, {len(ppi_rows)} ppi_partners, "
+          f"{len(idr_rows)} idr_segments, {len(go_rows)} go_terms rows.")
+    if skipped:
+        print(f"Skipped {len(skipped)} protein(s) in protein_details/ with no matching row in proteins table: {skipped}")
+
+
 if __name__ == "__main__":
     ingest_proteins()
     ingest_diseases()
     ingest_variants()
+    ingest_protein_detail_tables()
     cur.close()
     conn.close()
     print("\nDone. Note: R2 bulk-file upload was intentionally skipped this run (on hold) --")

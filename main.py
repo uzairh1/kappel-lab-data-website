@@ -1,274 +1,295 @@
 """
-IDR·ATLAS REST API
+Kappel Lab Data Website REST API
 ===================
-A real REST API over the protein metadata, with search/filter/pagination.
+Queries Postgres directly -- this replaces the earlier version that loaded
+data.json into memory. That worked fine for a 101-protein static demo, but
+couldn't support real cross-table filtering (by IDR segment kappa, PPI
+partner, condensate name, GO term, etc.) without eagerly loading every
+protein's full detail into every request -- exactly the problem the
+Postgres migration exists to solve.
 
-Architecture note on the 2TB of bulk data:
-    This API serves METADATA only (small, structured — the protein records).
-    The large files (imaging, sequencing, structural data) should live in
-    object storage (S3 / GCS / institutional storage), NOT on this server's
-    disk and NOT in the git repo. The /proteins/{uniprot}/files endpoint
-    below is where you'd return signed URLs or direct links into that
-    storage once it's set up — it's stubbed out with placeholder metadata
-    for now so the frontend and API contract are already correct.
+R2 note (still fully separate, still on hold): this API serves METADATA
+from Postgres. The big per-protein detail/mutation files stay wherever
+they currently live (git/GitHub Pages for now) -- this file doesn't touch
+that at all. See ingest_to_postgres.py's docstring for the same note.
 
-Run locally:
+Setup:
+    export DATABASE_URL="postgresql://user:password@host:port/dbname"
     pip install -r requirements.txt
     uvicorn main:app --reload --port 8000
 
 Then visit:
-    http://localhost:8000/docs   <- interactive API docs (auto-generated)
-    http://localhost:8000/api/proteins
+    http://localhost:8000/docs
 """
 
-from fastapi import FastAPI, HTTPException, Query
+import os
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 from pydantic import BaseModel
-import json
-from pathlib import Path
+import psycopg2
+import psycopg2.extras
 
-DATA_PATH = Path(__file__).parent / "data.json"
-DISEASES_PATH = Path(__file__).parent / "diseases.json"
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable not set -- see this file's docstring.")
+
+def get_conn():
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
+    return conn
 
 app = FastAPI(
-    title="IDR·ATLAS API",
-    description="Intrinsic disorder, sequence biophysics, and condensate membership for a curated protein set.",
-    version="0.1.0-pilot",
+    title="Kappel Lab Data Website API",
+    description="Intrinsic disorder, sequence biophysics, and condensate membership for a curated protein set -- backed by Postgres.",
+    version="0.2.0-postgres",
 )
 
-# Allow the static frontend (GitHub Pages, or localhost during dev) to call this API.
-# Tighten this list to your actual site's domain before going to production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # e.g. ["https://<your-username>.github.io"] in production
+    allow_origins=["*"],  # tighten to the real site's domain before production
     allow_methods=["GET"],
     allow_headers=["*"],
 )
 
-with open(DATA_PATH) as f:
-    PROTEINS: List[dict] = json.load(f)
-BY_UNIPROT = {p["uniprot"]: p for p in PROTEINS}
+# numeric fields on the proteins table that support min_/max_ query params --
+# same 14 fields as the frontend's "Metric filters" dropdown, kept in sync
+# deliberately so the API and UI offer the same filtering surface
+NUMERIC_FIELDS = [
+    "length", "idr_count", "idr_total_size", "fold_total_size", "ppi_partner_count",
+    "fcr", "ncpr", "kappa", "mean_hydropathy", "isoelectric_point", "molecular_weight",
+    "saturation_conc_uM", "delta_g_kt", "disease_count",
+]
 
-with open(DISEASES_PATH) as f:
-    DISEASES_BY_UNIPROT: dict = json.load(f)
 
-
-# ---------- response models (also power the auto-generated /docs) ----------
+# ---------- response models ----------
 
 class ProteinSummary(BaseModel):
     uniprot: str
     gene: str
-    ensg: str
+    ensg: Optional[str]
     dominant: Optional[bool]
     isoform_number: Optional[int]
     isoform_label: Optional[str]
-    length: int
-    disorder_fraction: Optional[float]
-    condensate_forming: bool
-    condensates: List[str]
-    ppi_partner_count: int
-    disease_count: int
-    top_diseases: List[dict]
-    variant_stats: Optional[dict]
-
-class ProteinDetail(ProteinSummary):
-    idr_count: int
-    idr_total_size: int
-    fold_total_size: int
-    idr_ranges: List[List[int]]
-    fold_ranges: List[List[int]]
-    domains: List[dict]
-    condensate_types: List[str]
-    condensate_confidence: List[int]
-    fcr: Optional[float]
-    ncpr: Optional[float]
-    kappa: Optional[float]
-    mean_hydropathy: Optional[float]
-    isoelectric_point: Optional[float]
-    molecular_weight: Optional[float]
-    saturation_conc_uM: Optional[float]
-    delta_g_kt: Optional[float]
+    length: Optional[int]
+    condensate_forming: Optional[bool]
+    condensates: Optional[List[str]]
+    ppi_partner_count: Optional[int]
+    disease_count: Optional[int]
 
 class PaginatedProteins(BaseModel):
     count: int
     limit: int
     offset: int
-    results: List[ProteinSummary]
-
-class DataFile(BaseModel):
-    name: str
-    size_estimate: str
-    status: str
-    url: Optional[str] = None
-
-class DiseaseAssociation(BaseModel):
-    disease_id: str
-    score: float
-    evidence_count: int
-    datatypes: List[str]
-
-class PaginatedDiseases(BaseModel):
-    count: int
-    limit: int
-    offset: int
-    results: List[DiseaseAssociation]
+    results: List[dict]
 
 class StatsResponse(BaseModel):
     total_proteins: int
     condensate_forming: int
     distinct_condensates: int
-    mean_disorder_fraction: float
 
 
 # ---------------------------- endpoints ----------------------------
 
 @app.get("/api/stats", response_model=StatsResponse, tags=["meta"])
 def get_stats():
-    """Summary statistics over the current pilot dataset."""
-    n = len(PROTEINS)
-    condensate_forming = sum(1 for p in PROTEINS if p["condensate_forming"])
-    distinct = len({c for p in PROTEINS for c in p["condensates"]})
-    mean_disorder = sum(p["disorder_fraction"] or 0 for p in PROTEINS) / n if n else 0
-    return StatsResponse(
-        total_proteins=n,
-        condensate_forming=condensate_forming,
-        distinct_condensates=distinct,
-        mean_disorder_fraction=round(mean_disorder, 4),
-    )
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT count(*) AS n, count(*) FILTER (WHERE condensate_forming) AS forming FROM proteins")
+    row = cur.fetchone()
+    cur.execute("SELECT count(DISTINCT condensate_name) AS n FROM condensate_details")
+    distinct = cur.fetchone()["n"]
+    conn.close()
+    return StatsResponse(total_proteins=row["n"], condensate_forming=row["forming"], distinct_condensates=distinct)
 
 
 @app.get("/api/condensates", tags=["meta"])
 def list_condensates():
-    """Distinct condensates in the dataset, with member counts."""
-    counts = {}
-    for p in PROTEINS:
-        for c in p["condensates"]:
-            counts[c] = counts.get(c, 0) + 1
-    return [{"name": k, "protein_count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+    """Distinct condensates, with member counts -- now from the real condensate_details table."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT condensate_name AS name, count(DISTINCT uniprot) AS protein_count
+        FROM condensate_details WHERE condensate_name IS NOT NULL
+        GROUP BY condensate_name ORDER BY protein_count DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
 
 
 @app.get("/api/proteins", response_model=PaginatedProteins, tags=["proteins"])
 def list_proteins(
+    request: Request,
     q: Optional[str] = Query(None, description="Search gene symbol or UniProt ID (substring match)"),
-    condensate_forming: Optional[bool] = Query(None, description="Filter to proteins with/without a reported condensate"),
+    condensate_forming: Optional[bool] = Query(None),
     condensate: Optional[str] = Query(None, description="Filter to proteins reported in this specific condensate"),
-    dominant: Optional[bool] = Query(None, description="Filter to dominant (true) or alternative (false) isoforms"),
-    min_disorder: float = Query(0, ge=0, le=1, description="Minimum predicted disorder fraction (0-1)"),
-    sort: str = Query("gene", description="Sort field: gene, disorder_fraction, ppi_partner_count, length"),
-    order: str = Query("asc", description="asc or desc"),
+    condensatopathy: Optional[str] = Query(None, description="Filter by condensatopathy flag on any of the protein's condensates (e.g. 'Yes')"),
+    dominant: Optional[bool] = Query(None),
+    ppi_partner: Optional[str] = Query(None, description="Filter to proteins that interact with this UniProt ID"),
+    go_term: Optional[str] = Query(None, description="Substring search across GO term descriptions"),
+    min_idr_kappa: Optional[float] = Query(None, description="Filter to proteins with at least one IDR segment above this kappa"),
+    max_idr_kappa: Optional[float] = Query(None),
+    sort: str = Query("gene", description="gene, disease_count, ppi_partner_count, length, or any NUMERIC_FIELDS entry"),
+    order: str = Query("asc"),
     limit: int = Query(25, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
     """
-    List and filter proteins. This is the main search endpoint — mirrors the
-    filters available in the web UI (search box, condensate filter, dominant
-    filter, disorder slider) so the frontend and API stay in sync.
+    Main search/filter endpoint. Supports:
+      - text search, condensate-forming, specific condensate, dominant isoform (as before)
+      - min_<field>/max_<field> for any of NUMERIC_FIELDS (e.g. ?min_kappa=0.3&max_kappa=0.5) --
+        these aren't declared as explicit params since there are 28 of them;
+        read directly from request.query_params instead (FastAPI has no
+        native **kwargs support for arbitrary query params -- confirmed by
+        testing, not assumed: an earlier version of this used **kwargs in
+        the signature and FastAPI treated it as a single required param
+        named "numeric_range_kwargs", a 422 on every request)
+      - condensatopathy, ppi_partner, go_term, min/max_idr_kappa -- cross-table filters
+        that used to be impossible without loading every protein's full detail
     """
-    results = PROTEINS
+    conn = get_conn()
+    cur = conn.cursor()
+
+    where, params = ["1=1"], []
 
     if q:
-        ql = q.lower()
-        results = [p for p in results if ql in p["gene"].lower() or ql in p["uniprot"].lower()]
+        where.append("(LOWER(gene) LIKE %s OR LOWER(uniprot) LIKE %s)")
+        params += [f"%{q.lower()}%", f"%{q.lower()}%"]
     if condensate_forming is not None:
-        results = [p for p in results if p["condensate_forming"] == condensate_forming]
+        where.append("condensate_forming = %s"); params.append(condensate_forming)
     if condensate:
-        results = [p for p in results if condensate in p["condensates"]]
+        where.append("%s = ANY(condensates)"); params.append(condensate)
     if dominant is not None:
-        results = [p for p in results if p["dominant"] == dominant]
-    if min_disorder:
-        results = [p for p in results if (p["disorder_fraction"] or 0) >= min_disorder]
+        where.append("dominant = %s"); params.append(dominant)
 
-    valid_sorts = {"gene", "disorder_fraction", "ppi_partner_count", "length"}
+    for field in NUMERIC_FIELDS:
+        min_val = request.query_params.get(f"min_{field}")
+        max_val = request.query_params.get(f"max_{field}")
+        if min_val is not None:
+            where.append(f"{field} >= %s"); params.append(float(min_val))
+        if max_val is not None:
+            where.append(f"{field} <= %s"); params.append(float(max_val))
+
+    if condensatopathy:
+        where.append("EXISTS (SELECT 1 FROM condensate_details cd WHERE cd.uniprot = proteins.uniprot AND cd.condensatopathy = %s)")
+        params.append(condensatopathy)
+    if ppi_partner:
+        where.append("EXISTS (SELECT 1 FROM ppi_partners pp WHERE pp.uniprot = proteins.uniprot AND pp.partner_uniprot = %s)")
+        params.append(ppi_partner.upper())
+    if go_term:
+        where.append("EXISTS (SELECT 1 FROM go_terms g WHERE g.uniprot = proteins.uniprot AND LOWER(g.description) LIKE %s)")
+        params.append(f"%{go_term.lower()}%")
+    if min_idr_kappa is not None:
+        where.append("EXISTS (SELECT 1 FROM idr_segments s WHERE s.uniprot = proteins.uniprot AND s.kappa >= %s)")
+        params.append(min_idr_kappa)
+    if max_idr_kappa is not None:
+        where.append("EXISTS (SELECT 1 FROM idr_segments s WHERE s.uniprot = proteins.uniprot AND s.kappa <= %s)")
+        params.append(max_idr_kappa)
+
+    valid_sorts = {"gene", "disease_count", "ppi_partner_count", "length"} | set(NUMERIC_FIELDS)
     if sort not in valid_sorts:
-        raise HTTPException(400, f"sort must be one of {valid_sorts}")
-    reverse = order == "desc"
-    results = sorted(results, key=lambda p: (p[sort] is None, p[sort]), reverse=reverse)
+        conn.close()
+        raise HTTPException(400, f"sort must be one of {sorted(valid_sorts)}")
+    order_sql = "DESC" if order == "desc" else "ASC"
 
-    total = len(results)
-    page = results[offset: offset + limit]
+    where_sql = " AND ".join(where)
+    cur.execute(f"SELECT count(*) AS n FROM proteins WHERE {where_sql}", params)
+    total = cur.fetchone()["n"]
 
-    return PaginatedProteins(count=total, limit=limit, offset=offset, results=page)
+    cur.execute(
+        f"SELECT * FROM proteins WHERE {where_sql} ORDER BY {sort} {order_sql} NULLS LAST LIMIT %s OFFSET %s",
+        params + [limit, offset],
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return PaginatedProteins(count=total, limit=limit, offset=offset, results=rows)
 
 
-@app.get("/api/proteins/{uniprot}", response_model=ProteinDetail, tags=["proteins"])
+@app.get("/api/proteins/{uniprot}", tags=["proteins"])
 def get_protein(uniprot: str):
-    """Full record for a single protein by UniProt ID."""
-    p = BY_UNIPROT.get(uniprot.upper())
-    if not p:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM proteins WHERE uniprot = %s", (uniprot.upper(),))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
         raise HTTPException(404, f"No protein found with UniProt ID '{uniprot}'")
-    return p
+    conn.close()
+    return row
 
 
-@app.get("/api/proteins/{uniprot}/files", response_model=List[DataFile], tags=["bulk-data"])
-def get_protein_files(uniprot: str):
-    """
-    Bulk data files associated with this protein (imaging, structural, raw
-    sequencing, etc). STUBBED for the pilot: once files are uploaded to
-    object storage (S3/GCS/institutional server), replace the placeholder
-    entries below with real signed URLs, e.g.:
-
-        DataFile(name=..., size_estimate=..., status="available",
-                 url=generate_presigned_url(bucket, key))
-    """
-    p = BY_UNIPROT.get(uniprot.upper())
-    if not p:
-        raise HTTPException(404, f"No protein found with UniProt ID '{uniprot}'")
-    return [
-        DataFile(name=f"{uniprot}.record.json", size_estimate="< 5 KB", status="available",
-                 url=f"/api/proteins/{uniprot}"),
-        DataFile(name=f"{uniprot}.fasta", size_estimate="< 2 KB", status="planned"),
-        DataFile(name=f"condensate_microscopy/{uniprot}/", size_estimate="est. 40-300 GB",
-                 status="planned — pending object storage setup"),
-    ]
-
-
-@app.get("/api/proteins/{uniprot}/diseases", response_model=PaginatedDiseases, tags=["diseases"])
+@app.get("/api/proteins/{uniprot}/diseases", tags=["diseases"])
 def get_protein_diseases(
     uniprot: str,
-    q: Optional[str] = Query(None, description="Filter by disease ID substring (e.g. 'EFO_0000' or 'MONDO')"),
-    datatype: Optional[str] = Query(None, description="Filter to associations with at least this evidence type (e.g. 'genetic_association', 'literature')"),
-    min_score: float = Query(0, ge=0, le=1, description="Minimum association score"),
-    sort: str = Query("score", description="Sort field: score, evidence_count, disease_id"),
-    order: str = Query("desc", description="asc or desc"),
+    q: Optional[str] = Query(None),
+    min_score: float = Query(0, ge=0, le=1),
+    sort: str = Query("score", description="score, evidence_count, or disease_id"),
+    order: str = Query("desc"),
     limit: int = Query(25, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """
-    Sourced from Open Targets association evidence, aggregated to one row
-    per disease (max score across evidence records, summed evidence count,
-    distinct contributing evidence types). Large per protein (up to ~1,400
-    for some proteins here) — hence pagination/filter/sort rather than
-    returning everything at once.
-    """
-    uid = uniprot.upper()
-    if uid not in BY_UNIPROT:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM proteins WHERE uniprot = %s", (uniprot.upper(),))
+    if not cur.fetchone():
+        conn.close()
         raise HTTPException(404, f"No protein found with UniProt ID '{uniprot}'")
-    diseases = DISEASES_BY_UNIPROT.get(uid, [])
 
+    where, params = ["uniprot = %s"], [uniprot.upper()]
     if q:
-        ql = q.lower()
-        diseases = [d for d in diseases if ql in d["disease_id"].lower()]
-    if datatype:
-        diseases = [d for d in diseases if datatype in d["datatypes"]]
+        where.append("LOWER(disease_id) LIKE %s"); params.append(f"%{q.lower()}%")
     if min_score:
-        diseases = [d for d in diseases if d["score"] >= min_score]
+        where.append("score >= %s"); params.append(min_score)
 
     valid_sorts = {"score", "evidence_count", "disease_id"}
     if sort not in valid_sorts:
+        conn.close()
         raise HTTPException(400, f"sort must be one of {valid_sorts}")
-    reverse = order == "desc"
-    diseases = sorted(diseases, key=lambda d: d[sort], reverse=reverse)
+    order_sql = "DESC" if order == "desc" else "ASC"
+    where_sql = " AND ".join(where)
 
-    total = len(diseases)
-    page = diseases[offset: offset + limit]
-    return PaginatedDiseases(count=total, limit=limit, offset=offset, results=page)
+    cur.execute(f"SELECT count(*) AS n FROM diseases WHERE {where_sql}", params)
+    total = cur.fetchone()["n"]
+    cur.execute(f"SELECT * FROM diseases WHERE {where_sql} ORDER BY {sort} {order_sql} LIMIT %s OFFSET %s",
+                params + [limit, offset])
+    rows = cur.fetchall()
+    conn.close()
+    return {"count": total, "limit": limit, "offset": offset, "results": rows}
+
+
+@app.get("/api/proteins/{uniprot}/ppi", tags=["interactions"])
+def get_protein_ppi(uniprot: str, limit: int = Query(50, ge=1, le=1000)):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT partner_uniprot, score, partner_in_pilot_set FROM ppi_partners WHERE uniprot = %s ORDER BY score DESC LIMIT %s",
+                (uniprot.upper(), limit))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+@app.get("/api/proteins/{uniprot}/idr-segments", tags=["biophysics"])
+def get_protein_idr_segments(uniprot: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM idr_segments WHERE uniprot = %s ORDER BY segment_index", (uniprot.upper(),))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
 
 
 @app.get("/", tags=["meta"])
 def root():
     return {
-        "name": "IDR·ATLAS API",
+        "name": "Kappel Lab Data Website API",
         "docs": "/docs",
-        "endpoints": ["/api/stats", "/api/condensates", "/api/proteins", "/api/proteins/{uniprot}", "/api/proteins/{uniprot}/files"],
+        "endpoints": ["/api/stats", "/api/condensates", "/api/proteins", "/api/proteins/{uniprot}",
+                      "/api/proteins/{uniprot}/diseases", "/api/proteins/{uniprot}/ppi", "/api/proteins/{uniprot}/idr-segments"],
     }

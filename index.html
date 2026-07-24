@@ -118,6 +118,28 @@
         <input id="disorder-range" type="range" min="0" max="100" value="0" style="width:100px; accent-color:var(--teal);">
         <span class="range-val" id="disorder-range-val">0%+</span>
       </div>
+      <div class="divider"></div>
+      <div class="cols-dropdown" id="metric-filters-dropdown">
+        <button class="btn secondary small" id="metric-filters-toggle-btn" type="button">Metric filters ▾</button>
+        <div class="cols-panel" id="metric-filters-panel" style="width:340px; max-height:420px; overflow-y:auto;"></div>
+      </div>
+      <div class="divider" id="api-only-filters-divider" style="display:none;"></div>
+      <div class="fitem" id="api-only-filters" style="display:none; gap:10px;">
+        <span title="These filters need the live API/database — not available on the static fallback">
+          Condensatopathy:
+          <select id="condensatopathy-select">
+            <option value="">Any</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </span>
+        <input id="ppi-partner-filter" type="text" placeholder="PPI partner UniProt ID" style="width:150px;">
+        <input id="go-term-filter" type="text" placeholder="GO term contains…" style="width:140px;">
+        <span style="font-size:12.5px; color:var(--slate);">IDR κ:
+          <input id="idr-kappa-min" type="number" step="0.01" placeholder="min" style="width:55px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+          <input id="idr-kappa-max" type="number" step="0.01" placeholder="max" style="width:55px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+        </span>
+      </div>
     </div>
 
     <div class="search-toolbar">
