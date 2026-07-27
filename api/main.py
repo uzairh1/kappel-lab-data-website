@@ -53,7 +53,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to the real site's domain before production
+    allow_origins=[
+        "https://kappel-lab-data-website-static-site.onrender.com",
+        "https://uzairh1.github.io",  # keep in case GitHub Pages is still used/tested
+        "http://localhost:8080", "http://127.0.0.1:8080",
+    ],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -62,7 +66,7 @@ app.add_middleware(
 # same 14 fields as the frontend's "Metric filters" dropdown, kept in sync
 # deliberately so the API and UI offer the same filtering surface
 NUMERIC_FIELDS = [
-    "length", "idr_count", "idr_total_size", "fold_total_size", "ppi_partner_count",
+    "length", "idr_count", "idr_total_size", "fold_total_size", "disorder_fraction", "ppi_partner_count",
     "fcr", "ncpr", "kappa", "mean_hydropathy", "isoelectric_point", "molecular_weight",
     "saturation_conc_uM", "delta_g_kt", "disease_count",
 ]
@@ -136,6 +140,12 @@ def list_proteins(
     go_term: Optional[str] = Query(None, description="Substring search across GO term descriptions"),
     min_idr_kappa: Optional[float] = Query(None, description="Filter to proteins with at least one IDR segment above this kappa"),
     max_idr_kappa: Optional[float] = Query(None),
+    min_idr_fcr: Optional[float] = Query(None, description="Same idea as min/max_idr_kappa but for FCR"),
+    max_idr_fcr: Optional[float] = Query(None),
+    disease: Optional[str] = Query(None, description="Substring search across this protein's associated disease IDs"),
+    is_rbp: Optional[bool] = Query(None, description="Filter by RBP status (from variant_stats)"),
+    min_pathogenic_variants: Optional[int] = Query(None, description="Filter to proteins with at least this many pathogenic ClinVar variants"),
+    domain_name: Optional[str] = Query(None, description="Substring search across this protein's named domains"),
     sort: str = Query("gene", description="gene, disease_count, ppi_partner_count, length, or any NUMERIC_FIELDS entry"),
     order: str = Query("asc"),
     limit: int = Query(25, ge=1, le=200),
@@ -192,6 +202,24 @@ def list_proteins(
     if max_idr_kappa is not None:
         where.append("EXISTS (SELECT 1 FROM idr_segments s WHERE s.uniprot = proteins.uniprot AND s.kappa <= %s)")
         params.append(max_idr_kappa)
+    if min_idr_fcr is not None:
+        where.append("EXISTS (SELECT 1 FROM idr_segments s WHERE s.uniprot = proteins.uniprot AND s.fcr >= %s)")
+        params.append(min_idr_fcr)
+    if max_idr_fcr is not None:
+        where.append("EXISTS (SELECT 1 FROM idr_segments s WHERE s.uniprot = proteins.uniprot AND s.fcr <= %s)")
+        params.append(max_idr_fcr)
+    if disease:
+        where.append("EXISTS (SELECT 1 FROM diseases d WHERE d.uniprot = proteins.uniprot AND LOWER(d.disease_id) LIKE %s)")
+        params.append(f"%{disease.lower()}%")
+    if is_rbp is not None:
+        where.append("(variant_stats->>'is_rbp')::boolean = %s")
+        params.append(is_rbp)
+    if min_pathogenic_variants is not None:
+        where.append("(variant_stats->>'total_pathogenic')::int >= %s")
+        params.append(min_pathogenic_variants)
+    if domain_name:
+        where.append("EXISTS (SELECT 1 FROM jsonb_array_elements(domains) elem WHERE LOWER(elem->>'name') LIKE %s)")
+        params.append(f"%{domain_name.lower()}%")
 
     valid_sorts = {"gene", "disease_count", "ppi_partner_count", "length"} | set(NUMERIC_FIELDS)
     if sort not in valid_sorts:
