@@ -146,6 +146,12 @@ def list_proteins(
     is_rbp: Optional[bool] = Query(None, description="Filter by RBP status (from variant_stats)"),
     min_pathogenic_variants: Optional[int] = Query(None, description="Filter to proteins with at least this many pathogenic ClinVar variants"),
     domain_name: Optional[str] = Query(None, description="Substring search across this protein's named domains"),
+    domain_start: Optional[int] = Query(None, description="Combined with domain_name: only match domains overlapping this position range"),
+    domain_end: Optional[int] = Query(None),
+    molecular_consequence: Optional[str] = Query(None, description="Substring search across this protein's variant molecular consequences (e.g. 'missense')"),
+    variant_classification: Optional[str] = Query(None, description="Substring search across this protein's variant classifications (e.g. 'Pathogenic', 'Uncertain significance')"),
+    condensate_type: Optional[str] = Query(None, description="Substring search across this protein's condensate types (e.g. 'biomolecular')"),
+    gene_type: Optional[str] = Query(None, description="Substring search on gene type (e.g. 'protein-coding')"),
     sort: str = Query("gene", description="gene, disease_count, ppi_partner_count, length, or any NUMERIC_FIELDS entry"),
     order: str = Query("asc"),
     limit: int = Query(25, ge=1, le=200),
@@ -218,8 +224,28 @@ def list_proteins(
         where.append("(variant_stats->>'total_pathogenic')::int >= %s")
         params.append(min_pathogenic_variants)
     if domain_name:
-        where.append("EXISTS (SELECT 1 FROM jsonb_array_elements(domains) elem WHERE LOWER(elem->>'name') LIKE %s)")
-        params.append(f"%{domain_name.lower()}%")
+        clause = "EXISTS (SELECT 1 FROM jsonb_array_elements(domains) elem WHERE LOWER(elem->>'name') LIKE %s"
+        clause_params = [f"%{domain_name.lower()}%"]
+        if domain_start is not None and domain_end is not None:
+            # real range overlap, not exact match -- catches "SGS around 200"
+            # as well as "SGS at exactly 167-228"
+            clause += " AND (elem->>'start')::int <= %s AND %s <= (elem->>'end')::int"
+            clause_params += [domain_end, domain_start]
+        clause += ")"
+        where.append(clause)
+        params += clause_params
+    if molecular_consequence:
+        where.append("EXISTS (SELECT 1 FROM variants v WHERE v.uniprot = proteins.uniprot AND LOWER(v.molecular_consequence) LIKE %s)")
+        params.append(f"%{molecular_consequence.lower()}%")
+    if variant_classification:
+        where.append("EXISTS (SELECT 1 FROM variants v WHERE v.uniprot = proteins.uniprot AND LOWER(v.primary_classification) LIKE %s)")
+        params.append(f"%{variant_classification.lower()}%")
+    if condensate_type:
+        where.append("EXISTS (SELECT 1 FROM condensate_details cd WHERE cd.uniprot = proteins.uniprot AND LOWER(cd.condensate_type) LIKE %s)")
+        params.append(f"%{condensate_type.lower()}%")
+    if gene_type:
+        where.append("LOWER(variant_stats->>'gene_type') LIKE %s")
+        params.append(f"%{gene_type.lower()}%")
 
     valid_sorts = {"gene", "disease_count", "ppi_partner_count", "length"} | set(NUMERIC_FIELDS)
     if sort not in valid_sorts:

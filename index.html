@@ -128,11 +128,12 @@
         <button class="btn secondary small" id="cross-filters-toggle-btn" type="button" title="These filters need the live API/database — not available on the static fallback">Cross-table filters ▾</button>
         <div class="cols-panel" id="cross-filters-panel" style="width:300px; max-height:460px; overflow-y:auto;">
           <h5>Condensates</h5>
-          <label style="display:block; font-size:12px; margin-bottom:10px;">Condensatopathy:
+          <label style="display:block; font-size:12px; margin-bottom:8px;">Condensatopathy:
             <select id="condensatopathy-select" style="margin-left:6px;">
               <option value="">Any</option><option value="Yes">Yes</option><option value="No">No</option>
             </select>
           </label>
+          <input id="condensate-type-filter" type="text" placeholder="Condensate type contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
 
           <h5>Interactions</h5>
           <input id="ppi-partner-filter" type="text" placeholder="PPI partner UniProt ID" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
@@ -141,7 +142,13 @@
           <input id="go-term-filter" type="text" placeholder="GO term contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
 
           <h5>Architecture</h5>
-          <input id="domain-name-filter" type="text" placeholder="Named domain contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+          <input id="domain-name-filter" type="text" placeholder="Named domain contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
+            <span style="font-size:11.5px; color:var(--faint);">at position</span>
+            <input id="domain-start-filter" type="number" placeholder="start" style="width:60px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+            <span style="font-size:11.5px; color:var(--faint);">–</span>
+            <input id="domain-end-filter" type="number" placeholder="end" style="width:60px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+          </div>
 
           <h5>Biophysics — IDR segments</h5>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
@@ -164,10 +171,13 @@
               <option value="">Any</option><option value="true">RBP</option><option value="false">Not RBP</option>
             </select>
           </label>
-          <div style="display:flex; gap:6px; align-items:center;">
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
             <span style="font-size:12px;">Min. pathogenic variants:</span>
             <input id="min-pathogenic-filter" type="number" min="0" placeholder="0" style="width:60px; font-family:var(--font-mono); font-size:11px; padding:3px;">
           </div>
+          <input id="molecular-consequence-filter" type="text" placeholder="Molecular consequence contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+          <input id="variant-classification-filter" type="text" placeholder="Variant classification contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+          <input id="gene-type-filter" type="text" placeholder="Gene type contains…" style="width:100%; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
         </div>
       </div>
     </div>

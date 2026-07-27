@@ -361,6 +361,26 @@ document.getElementById("min-pathogenic-filter").addEventListener("change", e=>{
 document.getElementById("domain-name-filter").addEventListener("change", e=>{
   domainNameFilter = e.target.value; renderResults();
 });
+let domainStartFilter = null, domainEndFilter = null;
+document.getElementById("domain-start-filter").addEventListener("change", e=>{
+  domainStartFilter = e.target.value === "" ? null : parseInt(e.target.value, 10); renderResults();
+});
+document.getElementById("domain-end-filter").addEventListener("change", e=>{
+  domainEndFilter = e.target.value === "" ? null : parseInt(e.target.value, 10); renderResults();
+});
+let condensateTypeFilter = "", molecularConsequenceFilter = "", variantClassificationFilter = "", geneTypeFilter = "";
+document.getElementById("condensate-type-filter").addEventListener("change", e=>{
+  condensateTypeFilter = e.target.value; renderResults();
+});
+document.getElementById("molecular-consequence-filter").addEventListener("change", e=>{
+  molecularConsequenceFilter = e.target.value; renderResults();
+});
+document.getElementById("variant-classification-filter").addEventListener("change", e=>{
+  variantClassificationFilter = e.target.value; renderResults();
+});
+document.getElementById("gene-type-filter").addEventListener("change", e=>{
+  geneTypeFilter = e.target.value; renderResults();
+});
 
 function cellFor(key, p){
   switch(key){
@@ -499,6 +519,12 @@ async function renderResultsFromAPI(){
   if(isRbpFilter) params.set("is_rbp", isRbpFilter);
   if(minPathogenicFilter !== null) params.set("min_pathogenic_variants", minPathogenicFilter);
   if(domainNameFilter.trim()) params.set("domain_name", domainNameFilter.trim());
+  if(domainStartFilter !== null) params.set("domain_start", domainStartFilter);
+  if(domainEndFilter !== null) params.set("domain_end", domainEndFilter);
+  if(condensateTypeFilter.trim()) params.set("condensate_type", condensateTypeFilter.trim());
+  if(molecularConsequenceFilter.trim()) params.set("molecular_consequence", molecularConsequenceFilter.trim());
+  if(variantClassificationFilter.trim()) params.set("variant_classification", variantClassificationFilter.trim());
+  if(geneTypeFilter.trim()) params.set("gene_type", geneTypeFilter.trim());
   for(const [key, range] of Object.entries(numericFilterState)){
     params.set(`min_${key}`, range.min);
     params.set(`max_${key}`, range.max);
@@ -1217,7 +1243,6 @@ function openProteinById(uniprot){
     <div><span>Gene</span><b>${p.gene}</b></div>
     <div><span>UniProt</span><b>${p.uniprot}</b></div>
     <div><span>Ensembl gene</span><b>${p.ensg}</b></div>
-    <div><span>Isoform / variant</span><b>${p.isoform_label || ('variant '+p.isoform_number)}</b></div>
     <div><span>Dominant isoform</span><b>${p.dominant ? 'Yes' : 'No'}</b></div>
     <div><span>Sequence length</span><b>${p.length} aa</b></div>
     <div><span>Predicted disorder content</span><b>${Math.round((p.disorder_fraction||0)*100)}%</b></div>
