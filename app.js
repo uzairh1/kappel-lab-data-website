@@ -8,7 +8,7 @@
 // Point this at your deployed API once it's hosted somewhere reachable
 // (Render, Railway, Fly.io, a university server, etc). Leave as-is for
 // local development against `uvicorn main:app --reload --port 8000`.
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = "https://kappel-lab-data-website.onrender.com/api";
 
 let PROTEINS = [];
 let USING_LIVE_API = false;
@@ -1236,8 +1236,7 @@ function openProteinById(uniprot){
   document.getElementById("d-gene").textContent = p.gene;
   document.getElementById("d-uniprot").textContent = p.uniprot;
   document.getElementById("d-eyebrow").textContent = p.dominant ? "Dominant isoform" : "Alternative isoform";
-  document.getElementById("d-meta").textContent =
-    `${p.ensg} · ${p.length} aa · ${p.isoform_label || ('variant '+p.isoform_number)}`;
+  document.getElementById("d-meta").textContent = `${p.ensg} · ${p.length} aa`;
 
   document.getElementById("d-kv").innerHTML = `
     <div><span>Gene</span><b>${p.gene}</b></div>
