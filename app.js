@@ -40,7 +40,7 @@ function init(){
   badge.style.display = "inline-block";
   badge.textContent = USING_LIVE_API ? "● live API" : "○ static demo data";
   badge.style.color = USING_LIVE_API ? "var(--teal)" : "var(--faint)";
-  document.getElementById("api-only-filters").style.display = USING_LIVE_API ? "flex" : "none";
+  document.getElementById("cross-filters-dropdown").style.display = USING_LIVE_API ? "inline-block" : "none";
   document.getElementById("api-only-filters-divider").style.display = USING_LIVE_API ? "block" : "none";
   buildHeroTrack();
   buildStats();
@@ -328,6 +328,40 @@ document.getElementById("idr-kappa-max").addEventListener("change", e=>{
   idrKappaMax = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
 });
 
+// dropdown open/close, same pattern as metric-filters
+document.getElementById("cross-filters-toggle-btn").addEventListener("click", ()=>{
+  document.getElementById("cross-filters-panel").classList.toggle("open");
+});
+document.addEventListener("click", (e)=>{
+  const dd = document.getElementById("cross-filters-dropdown");
+  if(dd && !dd.contains(e.target)) document.getElementById("cross-filters-panel").classList.remove("open");
+});
+
+let idrFcrMin = null, idrFcrMax = null;
+let diseaseFilter = "";
+let isRbpFilter = "";
+let minPathogenicFilter = null;
+let domainNameFilter = "";
+
+document.getElementById("idr-fcr-min").addEventListener("change", e=>{
+  idrFcrMin = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
+});
+document.getElementById("idr-fcr-max").addEventListener("change", e=>{
+  idrFcrMax = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
+});
+document.getElementById("disease-filter").addEventListener("change", e=>{
+  diseaseFilter = e.target.value; renderResults();
+});
+document.getElementById("is-rbp-select").addEventListener("change", e=>{
+  isRbpFilter = e.target.value; renderResults();
+});
+document.getElementById("min-pathogenic-filter").addEventListener("change", e=>{
+  minPathogenicFilter = e.target.value === "" ? null : parseInt(e.target.value, 10); renderResults();
+});
+document.getElementById("domain-name-filter").addEventListener("change", e=>{
+  domainNameFilter = e.target.value; renderResults();
+});
+
 function cellFor(key, p){
   switch(key){
     case "gene": return `<span class="gene-sym">${p.gene}</span>`;
@@ -459,6 +493,12 @@ async function renderResultsFromAPI(){
   if(goTermFilter.trim()) params.set("go_term", goTermFilter.trim());
   if(idrKappaMin !== null) params.set("min_idr_kappa", idrKappaMin);
   if(idrKappaMax !== null) params.set("max_idr_kappa", idrKappaMax);
+  if(idrFcrMin !== null) params.set("min_idr_fcr", idrFcrMin);
+  if(idrFcrMax !== null) params.set("max_idr_fcr", idrFcrMax);
+  if(diseaseFilter.trim()) params.set("disease", diseaseFilter.trim());
+  if(isRbpFilter) params.set("is_rbp", isRbpFilter);
+  if(minPathogenicFilter !== null) params.set("min_pathogenic_variants", minPathogenicFilter);
+  if(domainNameFilter.trim()) params.set("domain_name", domainNameFilter.trim());
   for(const [key, range] of Object.entries(numericFilterState)){
     params.set(`min_${key}`, range.min);
     params.set(`max_${key}`, range.max);

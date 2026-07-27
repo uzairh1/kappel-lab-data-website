@@ -124,21 +124,51 @@
         <div class="cols-panel" id="metric-filters-panel" style="width:340px; max-height:420px; overflow-y:auto;"></div>
       </div>
       <div class="divider" id="api-only-filters-divider" style="display:none;"></div>
-      <div class="fitem" id="api-only-filters" style="display:none; gap:10px;">
-        <span title="These filters need the live API/database — not available on the static fallback">
-          Condensatopathy:
-          <select id="condensatopathy-select">
-            <option value="">Any</option>
-            <option value="Yes">Yes</option>
-            <option value="No">No</option>
-          </select>
-        </span>
-        <input id="ppi-partner-filter" type="text" placeholder="PPI partner UniProt ID" style="width:150px;">
-        <input id="go-term-filter" type="text" placeholder="GO term contains…" style="width:140px;">
-        <span style="font-size:12.5px; color:var(--slate);">IDR κ:
-          <input id="idr-kappa-min" type="number" step="0.01" placeholder="min" style="width:55px; font-family:var(--font-mono); font-size:11px; padding:3px;">
-          <input id="idr-kappa-max" type="number" step="0.01" placeholder="max" style="width:55px; font-family:var(--font-mono); font-size:11px; padding:3px;">
-        </span>
+      <div class="cols-dropdown" id="cross-filters-dropdown" style="display:none;">
+        <button class="btn secondary small" id="cross-filters-toggle-btn" type="button" title="These filters need the live API/database — not available on the static fallback">Cross-table filters ▾</button>
+        <div class="cols-panel" id="cross-filters-panel" style="width:300px; max-height:460px; overflow-y:auto;">
+          <h5>Condensates</h5>
+          <label style="display:block; font-size:12px; margin-bottom:10px;">Condensatopathy:
+            <select id="condensatopathy-select" style="margin-left:6px;">
+              <option value="">Any</option><option value="Yes">Yes</option><option value="No">No</option>
+            </select>
+          </label>
+
+          <h5>Interactions</h5>
+          <input id="ppi-partner-filter" type="text" placeholder="PPI partner UniProt ID" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+
+          <h5>Gene annotation</h5>
+          <input id="go-term-filter" type="text" placeholder="GO term contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+
+          <h5>Architecture</h5>
+          <input id="domain-name-filter" type="text" placeholder="Named domain contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+
+          <h5>Biophysics — IDR segments</h5>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; width:36px;">κ:</span>
+            <input id="idr-kappa-min" type="number" step="0.01" placeholder="min" style="width:70px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+            <input id="idr-kappa-max" type="number" step="0.01" placeholder="max" style="width:70px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+          </div>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
+            <span style="font-size:12px; width:36px;">FCR:</span>
+            <input id="idr-fcr-min" type="number" step="0.01" placeholder="min" style="width:70px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+            <input id="idr-fcr-max" type="number" step="0.01" placeholder="max" style="width:70px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+          </div>
+
+          <h5>Diseases</h5>
+          <input id="disease-filter" type="text" placeholder="Disease ID contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+
+          <h5>Variants &amp; RBP</h5>
+          <label style="display:block; font-size:12px; margin-bottom:8px;">RBP status:
+            <select id="is-rbp-select" style="margin-left:6px;">
+              <option value="">Any</option><option value="true">RBP</option><option value="false">Not RBP</option>
+            </select>
+          </label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span style="font-size:12px;">Min. pathogenic variants:</span>
+            <input id="min-pathogenic-filter" type="number" min="0" placeholder="0" style="width:60px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+          </div>
+        </div>
       </div>
     </div>
 
