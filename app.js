@@ -4,15 +4,15 @@
    to the static data.json bundled with the site (needed for GitHub Pages,
    which can't run the API server).
    ============================================================ */
-
+ 
 // Point this at your deployed API once it's hosted somewhere reachable
 // (Render, Railway, Fly.io, a university server, etc). Leave as-is for
 // local development against `uvicorn main:app --reload --port 8000`.
 const API_BASE = "https://kappel-lab-data-website.onrender.com/api";
-
+ 
 let PROTEINS = [];
 let USING_LIVE_API = false;
-
+ 
 async function loadData(){
   try {
     const res = await fetch(`${API_BASE}/proteins?limit=200`, {signal: AbortSignal.timeout(1500)});
@@ -34,7 +34,7 @@ async function loadData(){
   }
   init();
 }
-
+ 
 function init(){
   const badge = document.getElementById("data-source-badge");
   badge.style.display = "inline-block";
@@ -49,7 +49,7 @@ function init(){
   buildColumnToggles();
   renderResults();
 }
-
+ 
 /* ============================================================
    NAVIGATION
    ============================================================ */
@@ -72,7 +72,7 @@ document.querySelectorAll("nav.links button").forEach(btn=>{
     }
   });
 });
-
+ 
 /* ============================================================
    HOME: signature hero track — one protein's disorder architecture,
    scanning left to right like an active prediction run.
@@ -81,13 +81,13 @@ function buildHeroTrack(){
   // pick a visually interesting example: highly disordered + condensate-forming
   const candidates = PROTEINS.filter(p=>p.condensate_forming && p.length > 300);
   const p = candidates.sort((a,b)=> b.disorder_fraction - a.disorder_fraction)[0] || PROTEINS[0];
-
+ 
   document.getElementById("hero-track-label").innerHTML =
     `<b>${p.gene}</b> (${p.uniprot}) — disorder &amp; domain architecture, ${p.length} aa`;
-
+ 
   drawArchitecture("hero-track-svg", p, {H:120, animate:true});
 }
-
+ 
 /* Shared architecture drawing: folded regions, IDR regions, named domains */
 // Distinct per-domain-name colors, assigned PER PROTEIN (not global) -- a
 // given color means something different from one protein's legend to the
@@ -108,7 +108,7 @@ function domainLegendHtml(domainColorMap){
   // sits slightly below its siblings instead of sharing their baseline.
   return entries.map(([name,color])=>`<span><i class="swatch" style="background:${color}"></i>${name}</span>`).join("");
 }
-
+ 
 function drawArchitecture(svgId, p, opts={}){
   const svg = document.getElementById(svgId);
   const W = 1116, H = opts.H || 150;
@@ -116,7 +116,7 @@ function drawArchitecture(svgId, p, opts={}){
   const len = p.length || 1;
   const xScale = x => (x/len) * W;
   const domainColorMap = buildDomainColorMap(p.domains);
-
+ 
   let content = "";
   // baseline
   content += `<rect x="0" y="${trackY}" width="${W}" height="${trackH}" rx="4" fill="#EEF1EF" stroke="#D2D9D8"/>`;
@@ -151,10 +151,10 @@ function drawArchitecture(svgId, p, opts={}){
   if(opts.animate){
     content += `<line id="${svgId}-cursor" x1="0" y1="${trackY-20}" x2="0" y2="${trackY+trackH+2}" stroke="#14181A" stroke-width="1" stroke-opacity="0.4"/>`;
   }
-
+ 
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.innerHTML = content;
-
+ 
   if(opts.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
     let pos = 0;
     function animate(){
@@ -166,7 +166,7 @@ function drawArchitecture(svgId, p, opts={}){
     requestAnimationFrame(animate);
   }
 }
-
+ 
 /* ============================================================
    HOME: stats
    ============================================================ */
@@ -175,7 +175,7 @@ function buildStats(){
   const condN = PROTEINS.filter(p=>p.condensate_forming).length;
   const distinctCond = new Set(PROTEINS.flatMap(p=>p.condensates)).size;
   const meanDisorder = PROTEINS.reduce((s,p)=>s+(p.disorder_fraction||0),0)/n;
-
+ 
   document.getElementById("stats-grid").innerHTML = `
     <div class="stat-cell"><div class="stat-num">${n}</div><div class="stat-label">Curated proteins (pilot release)</div></div>
     <div class="stat-cell"><div class="stat-num">${condN} / ${n}</div><div class="stat-label">Reported condensate-forming</div></div>
@@ -183,7 +183,7 @@ function buildStats(){
     <div class="stat-cell"><div class="stat-num">${(meanDisorder*100).toFixed(0)}%</div><div class="stat-label">Mean predicted disorder content</div></div>
   `;
 }
-
+ 
 /* ============================================================
    HOME: condensate chip gallery (click to filter table)
    ============================================================ */
@@ -209,7 +209,7 @@ function filterByCondensate(name){
   document.getElementById("condensate-filter-select").value = name;
   renderResults();
 }
-
+ 
 /* ============================================================
    HOME: featured protein
    ============================================================ */
@@ -231,7 +231,7 @@ function buildFeatured(){
     </div>
   `;
 }
-
+ 
 /* ============================================================
    COLUMN CONFIG
    ============================================================ */
@@ -256,7 +256,7 @@ const COLUMNS = [
   {key:"pathogenic", label:"Pathogenic variants (total)", default:false},
 ];
 let activeColumns = new Set(COLUMNS.filter(c=>c.default).map(c=>c.key));
-
+ 
 function buildColumnToggles(){
   const panel = document.getElementById("cols-panel");
   panel.innerHTML = `<h5>Show / hide columns</h5>` + COLUMNS.map(c=>`
@@ -280,7 +280,7 @@ document.addEventListener("click", (e)=>{
   const dd = document.getElementById("cols-dropdown");
   if(dd && !dd.contains(e.target)) document.getElementById("cols-panel").classList.remove("open");
 });
-
+ 
 /* ============================================================
    SEARCH / FILTER STATE
    ============================================================ */
@@ -289,14 +289,14 @@ let currentCondensateFilter = "";
 let condensateOnly = "any"; // any | yes | no
 let dominantOnly = "any";
 let minDisorder = 0;
-
+ 
 // populate condensate filter dropdown
 function populateCondensateSelect(){
   const sel = document.getElementById("condensate-filter-select");
   const names = Array.from(new Set(PROTEINS.flatMap(p=>p.condensates))).sort();
   sel.innerHTML = `<option value="">Any condensate</option>` + names.map(n=>`<option value="${n}">${n}</option>`).join("");
 }
-
+ 
 document.getElementById("filter-search").addEventListener("input", e=>{
   currentQuery = e.target.value;
   renderResults();
@@ -327,7 +327,7 @@ document.getElementById("idr-kappa-min").addEventListener("change", e=>{
 document.getElementById("idr-kappa-max").addEventListener("change", e=>{
   idrKappaMax = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
 });
-
+ 
 // dropdown open/close, same pattern as metric-filters
 document.getElementById("cross-filters-toggle-btn").addEventListener("click", ()=>{
   document.getElementById("cross-filters-panel").classList.toggle("open");
@@ -336,13 +336,13 @@ document.addEventListener("click", (e)=>{
   const dd = document.getElementById("cross-filters-dropdown");
   if(dd && !dd.contains(e.target)) document.getElementById("cross-filters-panel").classList.remove("open");
 });
-
+ 
 let idrFcrMin = null, idrFcrMax = null;
 let diseaseFilter = "";
 let isRbpFilter = "";
 let minPathogenicFilter = null;
 let domainNameFilter = "";
-
+ 
 document.getElementById("idr-fcr-min").addEventListener("change", e=>{
   idrFcrMin = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
 });
@@ -381,7 +381,18 @@ document.getElementById("variant-classification-filter").addEventListener("chang
 document.getElementById("gene-type-filter").addEventListener("change", e=>{
   geneTypeFilter = e.target.value; renderResults();
 });
-
+ 
+let tissueNameFilter = "", tissueRnaMin = null, tissueRnaMax = null;
+document.getElementById("tissue-name-filter").addEventListener("change", e=>{
+  tissueNameFilter = e.target.value; renderResults();
+});
+document.getElementById("tissue-rna-min").addEventListener("change", e=>{
+  tissueRnaMin = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
+});
+document.getElementById("tissue-rna-max").addEventListener("change", e=>{
+  tissueRnaMax = e.target.value === "" ? null : parseFloat(e.target.value); renderResults();
+});
+ 
 function cellFor(key, p){
   switch(key){
     case "gene": return `<span class="gene-sym">${p.gene}</span>`;
@@ -418,7 +429,7 @@ function cellFor(key, p){
     default: return "";
   }
 }
-
+ 
 // real min/max bounds computed from the actual dataset, not guessed
 const NUMERIC_FILTER_FIELDS = [
   {key:"length", label:"Sequence length (aa)", min:98, max:2376, step:1},
@@ -437,7 +448,7 @@ const NUMERIC_FILTER_FIELDS = [
   {key:"disease_count", label:"Disease associations", min:16, max:2343, step:1},
 ];
 let numericFilterState = {}; // { [key]: {min, max} } -- only present when actively narrowed from the full range
-
+ 
 function buildMetricFiltersPanel(){
   const panel = document.getElementById("metric-filters-panel");
   panel.innerHTML = `<h5>Filter by value range</h5>
@@ -453,7 +464,7 @@ function buildMetricFiltersPanel(){
         </div>
       </div>`;
     }).join("");
-
+ 
   panel.querySelectorAll('input[type=number]').forEach(inp=>{
     inp.addEventListener("change", e=>{
       const key = e.target.dataset.field;
@@ -481,7 +492,7 @@ document.addEventListener("click", (e)=>{
   const dd = document.getElementById("metric-filters-dropdown");
   if(dd && !dd.contains(e.target)) document.getElementById("metric-filters-panel").classList.remove("open");
 });
-
+ 
 // new filter state -- only meaningful via the live API (condensatopathy,
 // PPI partner, and GO term don't exist anywhere in the static data.json,
 // so these controls are hidden entirely on the static fallback)
@@ -490,7 +501,7 @@ let ppiPartnerFilter = "";
 let goTermFilter = "";
 let idrKappaMin = null;
 let idrKappaMax = null;
-
+ 
 async function renderResults(){
   if(USING_LIVE_API){
     await renderResultsFromAPI();
@@ -498,7 +509,7 @@ async function renderResults(){
     renderResultsFromStatic();
   }
 }
-
+ 
 async function renderResultsFromAPI(){
   const params = new URLSearchParams({limit: 200, offset: 0});
   if(currentQuery.trim()) params.set("q", currentQuery.trim());
@@ -525,11 +536,14 @@ async function renderResultsFromAPI(){
   if(molecularConsequenceFilter.trim()) params.set("molecular_consequence", molecularConsequenceFilter.trim());
   if(variantClassificationFilter.trim()) params.set("variant_classification", variantClassificationFilter.trim());
   if(geneTypeFilter.trim()) params.set("gene_type", geneTypeFilter.trim());
+  if(tissueNameFilter.trim()) params.set("tissue", tissueNameFilter.trim());
+  if(tissueRnaMin !== null) params.set("min_tissue_rna", tissueRnaMin);
+  if(tissueRnaMax !== null) params.set("max_tissue_rna", tissueRnaMax);
   for(const [key, range] of Object.entries(numericFilterState)){
     params.set(`min_${key}`, range.min);
     params.set(`max_${key}`, range.max);
   }
-
+ 
   let payload;
   try{
     const res = await fetch(`${API_BASE}/proteins?${params}`, {signal: AbortSignal.timeout(5000)});
@@ -540,14 +554,14 @@ async function renderResultsFromAPI(){
     renderResultsFromStatic();
     return;
   }
-
+ 
   document.getElementById("results-n").textContent = payload.count;
   document.getElementById("search-title").textContent = currentQuery ? `Results for "${currentQuery}"` : (currentCondensateFilter ? `Condensate: ${currentCondensateFilter}` : "All proteins");
-
+ 
   const cols = COLUMNS.filter(c=>activeColumns.has(c.key));
   const thead = document.getElementById("results-thead");
   thead.innerHTML = `<tr>${cols.map(c=>`<th>${c.label}</th>`).join("")}</tr>`;
-
+ 
   const tbody = document.getElementById("results-body");
   tbody.innerHTML = payload.results.map(p=>`
     <tr onclick="openProteinById('${p.uniprot}')">
@@ -555,7 +569,7 @@ async function renderResultsFromAPI(){
     </tr>
   `).join("") || `<tr><td colspan="${cols.length}" style="padding:28px; text-align:center; color:var(--faint);">No proteins match these filters.</td></tr>`;
 }
-
+ 
 function renderResultsFromStatic(){
   const q = currentQuery.trim().toLowerCase();
   let filtered = PROTEINS.filter(p=>{
@@ -573,14 +587,14 @@ function renderResultsFromStatic(){
     }
     return true;
   });
-
+ 
   document.getElementById("results-n").textContent = filtered.length;
   document.getElementById("search-title").textContent = q ? `Results for "${currentQuery}"` : (currentCondensateFilter ? `Condensate: ${currentCondensateFilter}` : "All proteins");
-
+ 
   const cols = COLUMNS.filter(c=>activeColumns.has(c.key));
   const thead = document.getElementById("results-thead");
   thead.innerHTML = `<tr>${cols.map(c=>`<th>${c.label}</th>`).join("")}</tr>`;
-
+ 
   const tbody = document.getElementById("results-body");
   tbody.innerHTML = filtered.map(p=>`
     <tr onclick="openProteinById('${p.uniprot}')">
@@ -588,7 +602,7 @@ function renderResultsFromStatic(){
     </tr>
   `).join("") || `<tr><td colspan="${cols.length}" style="padding:28px; text-align:center; color:var(--faint);">No proteins match these filters.</td></tr>`;
 }
-
+ 
 /* ============================================================
    HERO / NAV SEARCH ENTRY POINTS
    ============================================================ */
@@ -618,7 +632,7 @@ document.getElementById("condensate-filter-select").addEventListener("change", e
   currentCondensateFilter = e.target.value;
   renderResults();
 });
-
+ 
 /* ============================================================
    DETAIL VIEW
    ============================================================ */
@@ -637,14 +651,14 @@ const MV_CLASS_COLORS = {
 const MV_CONDITIONS = ["Cardiomyopathy","Long QT syndrome","Neurodevelopmental disorder","Skeletal myopathy","Retinal dystrophy","Hereditary cancer syndrome"];
 const MV_SHAPES = ["circle","triangle","square","diamond","star","cross"];
 const MV_CONDITION_SHAPE = Object.fromEntries(MV_CONDITIONS.map((c,i)=>[c, MV_SHAPES[i % MV_SHAPES.length]]));
-
+ 
 function seededRng(seedStr){
   let h = 0;
   for(let i=0;i<seedStr.length;i++){ h = (h*31 + seedStr.charCodeAt(i)) | 0; }
   let s = Math.abs(h) || 1;
   return function(){ s = (s*16807) % 2147483647; return (s-1)/2147483646; };
 }
-
+ 
 const MV_CACHE = {};
 /* ============================================================
    Real mutation data — lazy-loaded PER ISOFORM, not per protein.
@@ -661,7 +675,7 @@ const MV_CACHE = {};
 const REAL_INDEX_CACHE = {};
 const REAL_ISOFORM_CACHE = {};
 let usingRealMutationData = false;
-
+ 
 function adaptRealVariant(v){
   return {
     variation_id: v.variation_id, isoform_id: v.isoform_id,
@@ -674,7 +688,7 @@ function adaptRealVariant(v){
     isReal: true,
   };
 }
-
+ 
 async function getMutantViewIndex(p){
   if(p.uniprot in REAL_INDEX_CACHE) return REAL_INDEX_CACHE[p.uniprot];
   try{
@@ -699,11 +713,11 @@ async function getMutantViewIndex(p){
     return idx;
   }
 }
-
+ 
 async function getIsoformVariants(p, isoformId){
   const cacheKey = `${p.uniprot}::${isoformId}`;
   if(cacheKey in REAL_ISOFORM_CACHE) return REAL_ISOFORM_CACHE[cacheKey];
-
+ 
   if(!usingRealMutationData){
     const idx = await getMutantViewIndex(p); // already cached, just re-reads
     const vs = (idx._mockVariants || []).filter(v=>v.isoform_id===isoformId);
@@ -729,7 +743,7 @@ async function getIsoformVariants(p, isoformId){
     return [];
   }
 }
-
+ 
 function getMockMutantData(p){
   if(MV_CACHE[p.uniprot]) return MV_CACHE[p.uniprot];
   const rng = seededRng(p.uniprot);
@@ -770,7 +784,7 @@ function getMockMutantData(p){
   MV_CACHE[p.uniprot] = { isoforms, variants };
   return MV_CACHE[p.uniprot];
 }
-
+ 
 function mvShapeSvg(shape, x, y, size, fill){
   const s = size;
   switch(shape){
@@ -782,20 +796,20 @@ function mvShapeSvg(shape, x, y, size, fill){
     default: return `<circle cx="${x}" cy="${y}" r="${s}" fill="${fill}"/>`;
   }
 }
-
+ 
 let mvCurrentProtein = null;
 let mvFilters = { dominantOnly: true, classification: "", condition: "" };
 let mvExpandedIsoformIds = new Set(); // which non-dominant isoforms have been individually expanded/loaded
 let mvZoomState = {}; // { [isoformId]: {start, end} } in real sequence-position units -- absent means full-length view
 let mvZoomHistory = {}; // { [isoformId]: [{start,end}|null, ...] } -- previous views, for step-back (null = was full view)
 let mvDragState = null; // active drag tracking, or null when not dragging
-
+ 
 function mvPushZoomHistory(isoId){
   if(!mvZoomHistory[isoId]) mvZoomHistory[isoId] = [];
   const current = mvZoomState[isoId];
   mvZoomHistory[isoId].push(current ? {...current} : null); // null marks "was full view"
 }
-
+ 
 function mvZoomToCluster(isoId, minPos, maxPos){
   console.log(`mvZoomToCluster called: isoId=${isoId}, range=${minPos}-${maxPos}`); // debug: confirms this branch fired, not the list branch
   const padding = Math.max(5, Math.round((maxPos - minPos) * 0.15));
@@ -803,7 +817,7 @@ function mvZoomToCluster(isoId, minPos, maxPos){
   mvZoomState[isoId] = { start: Math.max(0, minPos - padding), end: maxPos + padding };
   renderMutantView(mvCurrentProtein);
 }
-
+ 
 function openMvClusterList(variants){
   console.log(`openMvClusterList called with ${variants.length} variants at position ${variants[0].position}`); // debug: confirms the click IS registering, even if the panel isn't visually obvious
   const panel = document.getElementById("mv-detail-panel");
@@ -828,27 +842,27 @@ function openMvClusterList(variants){
   panel.style.boxShadow = "0 0 0 3px var(--teal)";
   setTimeout(()=>{ panel.style.boxShadow = "none"; }, 900); // brief flash so it's unmistakable something happened
 }
-
+ 
 function expandIsoform(isoformId){
   mvExpandedIsoformIds.add(isoformId);
   renderMutantView(mvCurrentProtein);
 }
-
+ 
 const MV_TRACK_W = 1040; // fixed viewBox width every track SVG uses — needed to convert screen pixels to sequence position
-
+ 
 function mvSvgX(event, svgEl){
   const rect = svgEl.getBoundingClientRect();
   const scale = MV_TRACK_W / rect.width; // rendered CSS width can differ from the viewBox's internal units
   return Math.max(0, Math.min(MV_TRACK_W, (event.clientX - rect.left) * scale));
 }
-
+ 
 function mvZoomDragStart(event, isoId){
   const svgEl = event.currentTarget;
   mvDragState = { isoId, svgEl, startX: mvSvgX(event, svgEl), currentX: mvSvgX(event, svgEl) };
   const overlay = document.getElementById(`mv-zoom-overlay-${isoId}`);
   if(overlay){ overlay.setAttribute("width", 0); overlay.style.display = "block"; }
 }
-
+ 
 function mvZoomDragMove(event){
   if(!mvDragState) return;
   const x = mvSvgX(event, mvDragState.svgEl);
@@ -860,7 +874,7 @@ function mvZoomDragMove(event){
     overlay.setAttribute("width", x2 - x1);
   }
 }
-
+ 
 function mvZoomDragEnd(event, isoLength){
   if(!mvDragState) return;
   const { isoId, startX, currentX } = mvDragState;
@@ -869,7 +883,7 @@ function mvZoomDragEnd(event, isoLength){
   const pixelDist = Math.abs(currentX - startX);
   mvDragState = null;
   if(pixelDist < 8) return; // treat as a plain click (e.g. on a marker), not a zoom drag — don't interfere
-
+ 
   // convert the dragged pixel range, within THIS track's current view window,
   // back into real sequence-position units
   const existing = mvZoomState[isoId];
@@ -881,18 +895,18 @@ function mvZoomDragEnd(event, isoLength){
   const newStart = Math.round(viewStart + x1 * scale);
   const newEnd = Math.round(viewStart + x2 * scale);
   if(newEnd - newStart < 5) return; // ignore near-zero-width drags, avoids zooming into nothing
-
+ 
   mvPushZoomHistory(isoId);
   mvZoomState[isoId] = { start: newStart, end: newEnd };
   renderMutantView(mvCurrentProtein);
 }
-
+ 
 function mvZoomReset(isoId){
   delete mvZoomState[isoId];
   mvZoomHistory[isoId] = [];
   renderMutantView(mvCurrentProtein);
 }
-
+ 
 function mvZoomBack(isoId){
   const hist = mvZoomHistory[isoId];
   if(!hist || !hist.length) return;
@@ -901,7 +915,7 @@ function mvZoomBack(isoId){
   else delete mvZoomState[isoId]; // was full view before the last zoom
   renderMutantView(mvCurrentProtein);
 }
-
+ 
 function mvPan(isoId, direction, isoLength){
   const zoom = mvZoomState[isoId];
   const viewStart = zoom ? zoom.start : 0;
@@ -916,7 +930,7 @@ function mvPan(isoId, direction, isoLength){
   mvZoomState[isoId] = { start: newStart, end: newEnd };
   renderMutantView(mvCurrentProtein);
 }
-
+ 
 const MV_SEVERITY_RANK = {
   "Pathogenic": 5, "Likely pathogenic": 4, "Oncogenic": 5, "Likely oncogenic": 4,
   "Uncertain significance": 3, "Uncertain risk allele": 3,
@@ -927,13 +941,13 @@ function mvWorstCase(variants){
     (MV_SEVERITY_RANK[v.classification] || 0) > (MV_SEVERITY_RANK[worst.classification] || 0) ? v : worst
   , variants[0]);
 }
-
+ 
 async function renderMutantView(p){
   mvCurrentProtein = p;
   document.getElementById("mv-isoform-list").innerHTML = `<div class="empty-note">Loading mutation data…</div>`;
   const idx = await getMutantViewIndex(p);
   document.getElementById("mv-detail-panel").style.display = "none";
-
+ 
   const badge = document.querySelector(".mock-badge");
   if(badge){
     badge.textContent = usingRealMutationData
@@ -942,7 +956,7 @@ async function renderMutantView(p){
     badge.style.background = usingRealMutationData ? "var(--teal-soft)" : "var(--amber-soft)";
     badge.style.color = usingRealMutationData ? "#13463D" : "#7A4712";
   }
-
+ 
   // filter dropdowns populate fully from the index's lightweight summary —
   // doesn't require loading every isoform's actual variant data
   const classSel = document.getElementById("mv-class-filter");
@@ -952,7 +966,7 @@ async function renderMutantView(p){
   classSel.value = mvFilters.classification;
   condSel.value = mvFilters.condition;
   document.getElementById("mv-dominant-only").checked = mvFilters.dominantOnly;
-
+ 
   const isoforms = idx.isoforms;
   const maxLength = Math.max(...isoforms.map(i=>i.length || 1));
   // "Dominant isoform only" now controls which ROWS are listed at all.
@@ -962,7 +976,7 @@ async function renderMutantView(p){
   // (just index.json labels), loading their variant data is opt-in per row.
   const visibleIsoforms = mvFilters.dominantOnly ? isoforms.filter(i=>i.dominant) : isoforms;
   const isoformsToLoad = visibleIsoforms.filter(i=>i.dominant || mvExpandedIsoformIds.has(i.id));
-
+ 
   document.getElementById("mv-isoform-list").innerHTML = `<div class="empty-note">Loading ${isoformsToLoad.length} isoform track(s)…</div>`;
   const isoVariantsMap = {};
   const BATCH_SIZE = 6;
@@ -972,7 +986,7 @@ async function renderMutantView(p){
       isoVariantsMap[iso.id] = await getIsoformVariants(p, iso.id);
     }));
   }
-
+ 
   // dynamic condition -> shape mapping, computed from whatever's actually
   // loaded right now (updates as more isoforms get expanded) — real
   // ClinVar condition strings are arbitrary, can't hardcode like mock did
@@ -986,7 +1000,7 @@ async function renderMutantView(p){
   const shapeFor = cond => conditionShape[cond] || OTHER_SHAPE;
   const colorFor = cls => MV_CLASS_COLORS[cls] || "#8C949C"; // unranked/unknown classification -> neutral gray
   const presentClasses = [...new Set(allLoadedVariants.map(v=>v.classification))].sort();
-
+ 
   const listEl = document.getElementById("mv-isoform-list");
   listEl.innerHTML = visibleIsoforms.map(iso=>{
     const isLoaded = iso.id in isoVariantsMap;
@@ -1000,31 +1014,31 @@ async function renderMutantView(p){
         </div>
       </div>`;
     }
-
+ 
     const W = 1040;
     const stemGap = 16;
     const rangeLaneH = 20; // dedicated lane for span/range variants, separate from point stacking
-
+ 
     const zoom = mvZoomState[iso.id];
     const isZoomed = !!zoom;
     const viewStart = zoom ? zoom.start : 0;
     const viewEnd = zoom ? zoom.end : (iso.length || 1);
     const viewSpan = Math.max(1, viewEnd - viewStart);
-
+ 
     const isoVariants = (isoVariantsMap[iso.id] || [])
       .filter(v=> !mvFilters.classification || v.classification===mvFilters.classification)
       .filter(v=> !mvFilters.condition || v.condition===mvFilters.condition)
       .filter(v=> !isZoomed || (v.position <= viewEnd && (v.position_end ?? v.position) >= viewStart)); // only what overlaps the current view
     const pointVariants = isoVariants.filter(v=>!v.is_range);
     const rangeVariants = isoVariants.filter(v=>v.is_range);
-
+ 
     // zoomed: use the full track width for just the selected region (like
     // zooming into a genome browser). Not zoomed: keep the existing
     // relative-isoform-length overview scale, for cross-isoform comparison.
     const scale = isZoomed ? W : ((iso.length||1)/maxLength) * W;
     const posToX = pos => isZoomed ? ((pos - viewStart)/viewSpan)*W : (pos/(iso.length||1))*scale;
     const trackColor = iso.dominant ? "#C8781E" : "#8C949C";
-
+ 
     // Fixed-width histogram bins, not open-ended proximity chaining: chaining
     // alone can merge an entire dense region into ONE cluster spanning most
     // of the track (confirmed in testing — 2217 uniformly-ish spread
@@ -1043,16 +1057,16 @@ async function renderMutantView(p){
     const CLUSTER_THRESHOLD = 5; // groups at/above this render as one cluster marker, not N stacked lollipops
     const maxBucketSize = Math.max(1, ...buckets.map(b=>b.length));
     const headroomLevels = Math.min(maxBucketSize, CLUSTER_THRESHOLD) - 1; // clustered buckets only need cluster-marker height, not full stack height
-
+ 
     const trackY = 20 + headroomLevels*stemGap + (rangeVariants.length ? rangeLaneH : 0);
     const trackH = 14;
     const H = trackY + trackH + 28;
     const rangeLaneY = trackY - (rangeVariants.length ? rangeLaneH - 4 : 0);
-
+ 
     let markers = "";
     buckets.forEach(bucket=>{
       bucket.sort((a,b)=>a.v.position-b.v.position);
-
+ 
       if(bucket.length >= CLUSTER_THRESHOLD){
         const worst = mvWorstCase(bucket.map(item=>item.v));
         const color = colorFor(worst.classification);
@@ -1075,7 +1089,7 @@ async function renderMutantView(p){
         </g>`;
         return;
       }
-
+ 
       bucket.forEach((item, level)=>{
         const stemTopY = trackY - 10 - level*stemGap;
         const shape = shapeFor(item.v.condition);
@@ -1088,7 +1102,7 @@ async function renderMutantView(p){
         </g>`;
       });
     });
-
+ 
     // range variants — drawn as a highlighted span, not forced into a point
     let rangeMarkers = "";
     rangeVariants.forEach(v=>{
@@ -1103,7 +1117,7 @@ async function renderMutantView(p){
         <line x1="${x2}" y1="${rangeLaneY-2}" x2="${x2}" y2="${rangeLaneY+8}" stroke="${color}" stroke-width="1.5"/>
       </g>`;
     });
-
+ 
     let ruler = "";
     const nTicks = 10;
     for(let t=0; t<=nTicks; t++){
@@ -1112,11 +1126,11 @@ async function renderMutantView(p){
       ruler += `<line x1="${x}" y1="${trackY+trackH+2}" x2="${x}" y2="${trackY+trackH+7}" stroke="#8C949C" stroke-width="1"/>`;
       ruler += `<text x="${x}" y="${trackY+trackH+19}" font-family="IBM Plex Mono" font-size="9.5" fill="#8C949C" text-anchor="${t===0?'start':(t===nTicks?'end':'middle')}">${pos}</text>`;
     }
-
+ 
     const mismatchBadge = iso.dominant_source === "closest_length_inferred"
       ? `<span class="badge no" title="No isoform in the source file exactly matched our verified length — this is the closest available, not a confirmed match" style="margin-left:8px;">⚠ inferred dominant: ${iso.length} aa here vs ${iso.our_known_length} aa on record</span>`
       : "";
-
+ 
     return `<div class="mv-isoform-row ${iso.dominant?'dominant':''}">
       <div class="mv-isoform-head">
         <span><b>${iso.label}</b>${iso.dominant?'<span class="dom-tag">DOMINANT</span>':''}${mismatchBadge}</span>
@@ -1139,7 +1153,7 @@ async function renderMutantView(p){
       </svg>
     </div>`;
   }).join("");
-
+ 
   // legend — built from what's actually present in this protein's data,
   // not a fixed list (real condition strings are arbitrary, unlike mock)
   document.getElementById("mv-legend").innerHTML = `
@@ -1161,7 +1175,7 @@ async function renderMutantView(p){
     </div>
   `;
 }
-
+ 
 function openMvDetail(v){
   const panel = document.getElementById("mv-detail-panel");
   panel.style.display = "block";
@@ -1169,7 +1183,7 @@ function openMvDetail(v){
   const positionLabel = v.is_range
     ? `${v.mutated_from}${v.position}-${v.position_end}${v.mutated_to} (range)`
     : `${v.mutated_from}${v.position}${v.mutated_to}`;
-
+ 
   let extraSection = "";
   if(isReal && v.all_classifications && v.all_classifications.length){
     extraSection = `
@@ -1194,7 +1208,7 @@ function openMvDetail(v){
         <div><span>ΔHydropathy</span><b>${v.biophysics_shift.hydropathy_delta}</b></div>
       </div>`;
   }
-
+ 
   panel.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
       <h3>${v.variation_id} <span class="mono" style="font-size:12px; color:var(--faint); font-weight:400;">${isReal ? '' : 'MOCK'}</span></h3>
@@ -1214,7 +1228,7 @@ function openMvDetail(v){
   `;
   panel.scrollIntoView({behavior:"smooth", block:"nearest"});
 }
-
+ 
 document.getElementById("mv-dominant-only").addEventListener("change", e=>{
   mvFilters.dominantOnly = e.target.checked;
   if(mvCurrentProtein) renderMutantView(mvCurrentProtein);
@@ -1227,17 +1241,17 @@ document.getElementById("mv-condition-filter").addEventListener("change", e=>{
   mvFilters.condition = e.target.value;
   if(mvCurrentProtein) renderMutantView(mvCurrentProtein);
 });
-
+ 
 function openProteinById(uniprot){
   const p = PROTEINS.find(p=>p.uniprot===uniprot);
   if(!p) return;
   showView("detail");
-
+ 
   document.getElementById("d-gene").textContent = p.gene;
   document.getElementById("d-uniprot").textContent = p.uniprot;
   document.getElementById("d-eyebrow").textContent = p.dominant ? "Dominant isoform" : "Alternative isoform";
   document.getElementById("d-meta").textContent = `${p.ensg} · ${p.length} aa`;
-
+ 
   document.getElementById("d-kv").innerHTML = `
     <div><span>Gene</span><b>${p.gene}</b></div>
     <div><span>UniProt</span><b>${p.uniprot}</b></div>
@@ -1248,18 +1262,19 @@ function openProteinById(uniprot){
     <div><span>PPI partners (in dataset)</span><b>${p.ppi_partner_count}</b></div>
     <div><span>Disease associations</span><b>${p.disease_count}</b></div>
   `;
-
+ 
   document.getElementById("d-variants-panel").innerHTML = buildVariantsPanel(p);
-
+ 
   resetDiseaseTab(p.uniprot);
-
+  loadTissueTab(p.uniprot);
+ 
   drawArchitecture("arch-svg", p, {H:150, animate:false});
-
+ 
   document.getElementById("d-arch-legend").innerHTML = `
     <span><i class="swatch" style="background:#3E4A52"></i> Folded region</span>
     <span><i class="swatch" style="background:#C8781E"></i> Predicted IDR</span>
   ` + domainLegendHtml(buildDomainColorMap(p.domains));
-
+ 
   const condHtml = p.condensates.length
     ? p.condensates.map((c,i)=>{
         const conf = p.condensate_confidence[i] || 0;
@@ -1276,7 +1291,7 @@ function openProteinById(uniprot){
       }).join("")
     : `<div class="empty-note">No condensate association reported for this protein in the current release.</div>`;
   document.getElementById("d-condensates").innerHTML = condHtml;
-
+ 
   document.getElementById("d-biophysics").innerHTML = `
     <div class="kv-list">
       <div><span>FCR</span><b>${p.fcr ?? '—'}</b></div>
@@ -1290,14 +1305,14 @@ function openProteinById(uniprot){
     </div>
     <div class="subnote">FCR = fraction of charged residues; NCPR = net charge per residue; κ describes charge patterning along the sequence (CIDER/localCIDER conventions). Csat and ΔG are derived from coarse-grained phase-separation simulations, not experimental measurement, unless otherwise cited.</div>
   `;
-
+ 
   document.getElementById("d-files").innerHTML = `
     <div class="dl-row"><div class="dl-name">${p.uniprot}.record.json</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">&lt; 5 KB</span><button class="dl-btn" onclick='downloadRecord("${p.uniprot}")'>Download</button></div></div>
     <div class="dl-row"><div class="dl-name">${p.uniprot}.fasta</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">&lt; 2 KB</span><button class="dl-btn" disabled title="Full sequence export coming with full release">Download</button></div></div>
     <div class="dl-row"><div class="dl-name">condensate_microscopy/${p.uniprot}/</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">est. 40–300 GB</span><button class="dl-btn" disabled title="Planned for full-scale release">Coming soon</button></div></div>
   `;
   document.getElementById("d-uniprot-code").textContent = p.uniprot;
-
+ 
   mvExpandedIsoformIds = new Set();
   mvZoomState = {};
   mvZoomHistory = {};
@@ -1305,7 +1320,7 @@ function openProteinById(uniprot){
   switchTab("mutantview");
   loadDetailTabs(p.uniprot);
 }
-
+ 
 function downloadRecord(uniprot){
   const p = PROTEINS.find(p=>p.uniprot===uniprot);
   const blob = new Blob([JSON.stringify(p, null, 2)], {type:"application/json"});
@@ -1315,7 +1330,7 @@ function downloadRecord(uniprot){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-
+ 
 /* ============================================================
    Lazy-loaded per-protein detail files (protein_details/{uniprot}.json) —
    sequence, HGVS, full region-by-region biophysics, domain-type stats,
@@ -1328,7 +1343,7 @@ function downloadRecord(uniprot){
    ============================================================ */
 const PROTEIN_DETAILS_CACHE = {};
 let currentDetails = null;
-
+ 
 async function loadProteinDetails(uniprot){
   if(uniprot in PROTEIN_DETAILS_CACHE) return PROTEIN_DETAILS_CACHE[uniprot];
   try{
@@ -1341,7 +1356,7 @@ async function loadProteinDetails(uniprot){
   }
   return PROTEIN_DETAILS_CACHE[uniprot];
 }
-
+ 
 async function loadDetailTabs(uniprot){
   const d = await loadProteinDetails(uniprot);
   currentDetails = d;
@@ -1354,11 +1369,11 @@ async function loadDetailTabs(uniprot){
     });
     return;
   }
-
+ 
   renderRegionBiophysicsTable();
   renderRemainingDetailTabs(d);
 }
-
+ 
 // default to a compact, commonly-relevant subset; full 15 available via the Metrics toggle
 const IDR_METRIC_LABELS = {
   fcr:"FCR", ncpr:"NCPR", kappa:"κ", delta:"δ", delta_max:"δ max",
@@ -1371,13 +1386,13 @@ let idrMinSegmentSize = 0;
 let idrExcludedSegments = new Set(); // segment indices explicitly unchecked
 const IDR_DEFAULT_METRICS = ["fcr","ncpr","kappa","mean_hydropathy","isoelectric_point","molecular_weight"];
 let idrActiveMetrics = new Set(IDR_DEFAULT_METRICS);
-
+ 
 document.getElementById("idr-min-size").addEventListener("input", e=>{
   idrMinSegmentSize = parseInt(e.target.value, 10);
   document.getElementById("idr-min-size-val").textContent = idrMinSegmentSize + " aa+";
   renderRegionBiophysicsTable();
 });
-
+ 
 document.getElementById("idr-metrics-toggle-btn").addEventListener("click", ()=>{
   document.getElementById("idr-metrics-panel").classList.toggle("open");
 });
@@ -1385,7 +1400,7 @@ document.addEventListener("click", (e)=>{
   const dd = document.getElementById("idr-metrics-dropdown");
   if(dd && !dd.contains(e.target)) document.getElementById("idr-metrics-panel").classList.remove("open");
 });
-
+ 
 function buildIdrMetricsPanel(){
   const panel = document.getElementById("idr-metrics-panel");
   panel.innerHTML = `<h5>Show / hide metrics</h5>` + Object.entries(IDR_METRIC_LABELS).map(([key,label])=>`
@@ -1402,7 +1417,7 @@ function buildIdrMetricsPanel(){
     });
   });
 }
-
+ 
 function buildIdrSegmentCheckboxes(allSegments){
   const container = document.getElementById("idr-segment-checkboxes");
   if(!allSegments.length){ container.innerHTML = ""; return; }
@@ -1420,23 +1435,23 @@ function buildIdrSegmentCheckboxes(allSegments){
     });
   });
 }
-
+ 
 function renderRegionBiophysicsTable(){
   const d = currentDetails;
   if(!d || !d.biophysics_regions){
     document.getElementById("d-region-biophysics").innerHTML = `<span class="empty-note">No extended record for this protein in the current release.</span>`;
     return;
   }
-
+ 
   const regions = d.biophysics_regions;
   const allSegments = regions.idr_segments || [];
   buildIdrSegmentCheckboxes(allSegments);
   buildIdrMetricsPanel();
-
+ 
   const idrSegments = allSegments.filter((seg,i) => seg.size >= idrMinSegmentSize && !idrExcludedSegments.has(i));
   const activeMetricEntries = Object.entries(IDR_METRIC_LABELS).filter(([key]) => idrActiveMetrics.has(key));
   const fmt = v => (typeof v === "number") ? (Number.isInteger(v) ? v : v.toFixed(3)) : (v ?? '—');
-
+ 
   let regionRows = "";
   for(const [key,label] of activeMetricEntries){
     const w = regions.whole?.[key], f = regions.fold?.[key];
@@ -1448,12 +1463,12 @@ function renderRegionBiophysicsTable(){
     const realIdx = allSegments.indexOf(seg) + 1; // keep original numbering even when filtered
     return `<th>IDR ${realIdx}<br><span class="mono" style="font-weight:400; color:var(--faint); font-size:10.5px;">${seg.start}-${seg.end} (${seg.size} aa)</span></th>`;
   }).join("");
-
+ 
   const hiddenCount = allSegments.length - idrSegments.length;
   const filterNote = hiddenCount > 0
     ? `<p class="subnote" style="margin-top:10px;">${hiddenCount} segment${hiddenCount>1?'s':''} hidden by the filters above (size threshold and/or unchecked) — not deleted, just filtered from view.</p>`
     : '';
-
+ 
   document.getElementById("d-region-biophysics").innerHTML = allSegments.length ? `
     <div style="overflow-x:auto;">
     <table class="results-table">
@@ -1475,7 +1490,7 @@ function renderRegionBiophysicsTable(){
     <p class="empty-note">No IDR segments annotated for this protein.</p>
   `;
 }
-
+ 
 function renderRemainingDetailTabs(d){
   // --- Domain-type biophysics ---
   const dtWrap = document.getElementById("d-domain-types-wrap");
@@ -1496,7 +1511,7 @@ function renderRemainingDetailTabs(d){
       </table>
       </div>`;
   }
-
+ 
   // --- Patterning params ---
   const pt = d.patterning;
   document.getElementById("d-patterning").innerHTML = `
@@ -1509,7 +1524,7 @@ function renderRemainingDetailTabs(d){
       <div><span>ν (SVR)</span><b>${pt.nu_svr ?? '—'}</b></div>
       <div><span>Csat</span><b>${pt.saturation_conc_mgml ?? '—'} mg/mL</b></div>
     </div>`;
-
+ 
   // --- Sequence tab ---
   document.getElementById("d-hgvs").innerHTML = `
     <div><span>ENSP</span><b>${d.hgvs.ensp || '—'}</b></div>
@@ -1518,7 +1533,7 @@ function renderRemainingDetailTabs(d){
     <div><span>Description</span><b>${d.hgvs.description || '—'}</b></div>
   `;
   document.getElementById("d-full-sequence").textContent = (d.sequence || "").match(/.{1,60}/g)?.join("\n") || "—";
-
+ 
   // --- Interactions tab ---
   const pilotSet = new Set(PROTEINS.map(p=>p.uniprot));
   document.getElementById("d-ppi-count-label").textContent = `(${d.ppi.all_partners.length} total)`;
@@ -1537,7 +1552,7 @@ function renderRemainingDetailTabs(d){
   }
   renderPpiRows("");
   document.getElementById("ppi-search").oninput = (e)=>renderPpiRows(e.target.value);
-
+ 
   // --- Gene Annotation tab ---
   const ga = d.gene_annotation;
   document.getElementById("d-annotation-kv").innerHTML = `
@@ -1572,11 +1587,11 @@ function renderRemainingDetailTabs(d){
     <div><span>Homologue count</span><b>${ga.homologue_count}</b></div>
     <div><span>Tractable assay hits</span><b>${ga.tractability_summary.length}</b></div>
   `;
-
+ 
   // --- Condensates tab enrichment ---
   augmentCondensateCards(d.condensate_details);
 }
-
+ 
 function augmentCondensateCards(condensateDetails){
   if(!condensateDetails) return;
   condensateDetails.forEach((meta, i)=>{
@@ -1591,7 +1606,7 @@ function augmentCondensateCards(condensateDetails){
     slot.innerHTML = bits.join("");
   });
 }
-
+ 
 /* ============================================================
    DETAIL VIEW: Diseases tab — lazy loaded, filter/sort/paginate.
    Tries the live API's per-protein endpoint (server-side filtering) and
@@ -1603,7 +1618,70 @@ const DISEASE_PAGE_SIZE = 20;
 let STATIC_DISEASES_ALL = null; // lazy-loaded once, only in fallback mode
 let currentDetailUniprot = null;
 let diseaseState = {query:"", datatype:"", minScore:0, sort:"score", order:"desc", page:1};
-
+ 
+let currentTissues = [];
+let tissueSort = "rna_desc";
+let tissueSearch = "";
+ 
+async function loadTissueTab(uniprot){
+  document.getElementById("d-tissues").innerHTML = `<div class="empty-note">Loading…</div>`;
+  try{
+    const res = await fetch(`tissues/${uniprot}.json`);
+    if(!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    currentTissues = data.tissues || [];
+  } catch(err){
+    currentTissues = [];
+  }
+  renderTissueTab();
+}
+ 
+function renderTissueTab(){
+  const el = document.getElementById("d-tissues");
+  if(!currentTissues.length){
+    el.innerHTML = `<span class="empty-note">No tissue expression data for this protein in the current release.</span>`;
+    return;
+  }
+ 
+  const q = tissueSearch.trim().toLowerCase();
+  let rows = currentTissues.filter(t=>{
+    if(!q) return true;
+    return (t.label||"").toLowerCase().includes(q) || (t.organs||[]).some(o=>o.toLowerCase().includes(q));
+  });
+ 
+  if(tissueSort === "rna_desc") rows.sort((a,b)=>(b.rna_value??-1) - (a.rna_value??-1));
+  else if(tissueSort === "rna_asc") rows.sort((a,b)=>(a.rna_value??1e18) - (b.rna_value??1e18));
+  else if(tissueSort === "label") rows.sort((a,b)=>(a.label||"").localeCompare(b.label||""));
+ 
+  const maxVal = Math.max(1, ...currentTissues.map(t=>t.rna_value||0));
+ 
+  el.innerHTML = `
+    <p class="subnote" style="margin-bottom:10px;">${rows.length} of ${currentTissues.length} tissues shown</p>
+    <div style="display:flex; flex-direction:column; gap:4px;">
+      ${rows.map(t=>{
+        const barWidth = maxVal ? Math.max(2, (t.rna_value||0)/maxVal*100) : 0;
+        const proteinBadge = t.protein_reliability
+          ? `<span class="badge yes" title="Protein-level detection reported">protein detected</span>` : '';
+        return `<div style="display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--line);">
+          <div style="width:220px; font-size:12.5px; flex-shrink:0;" title="${(t.organs||[]).join(', ')}">${t.label}</div>
+          <div style="flex:1; background:var(--bg-warm); border-radius:3px; height:14px; position:relative;">
+            <div style="width:${barWidth}%; background:var(--amber); height:100%; border-radius:3px;"></div>
+          </div>
+          <div class="mono" style="width:80px; text-align:right; font-size:11.5px; color:var(--muted); flex-shrink:0;">${t.rna_value!=null ? t.rna_value.toFixed(1) : '—'}</div>
+          <div style="width:130px; flex-shrink:0;">${proteinBadge}</div>
+        </div>`;
+      }).join("")}
+    </div>
+  `;
+}
+ 
+document.getElementById("tissue-sort").addEventListener("change", e=>{
+  tissueSort = e.target.value; renderTissueTab();
+});
+document.getElementById("tissue-search").addEventListener("input", e=>{
+  tissueSearch = e.target.value; renderTissueTab();
+});
+ 
 function resetDiseaseTab(uniprot){
   currentDetailUniprot = uniprot;
   diseaseState = {query:"", datatype:"", minScore:0, sort:"score", order:"desc", page:1};
@@ -1615,7 +1693,7 @@ function resetDiseaseTab(uniprot){
   document.getElementById("disease-table-wrap").style.display = "none";
   document.getElementById("disease-loading").style.display = "block";
   document.getElementById("disease-loading").textContent = "Loading disease associations…";
-
+ 
   const dtSel = document.getElementById("disease-datatype-select");
   if(dtSel.options.length <= 1){
     DISEASE_DATATYPES.forEach(t=>{
@@ -1627,11 +1705,11 @@ function resetDiseaseTab(uniprot){
   const p = PROTEINS.find(p=>p.uniprot===uniprot);
   document.getElementById("d-disease-count-label").textContent = p ? `(${p.disease_count} total)` : "";
 }
-
+ 
 async function loadDiseasePage(){
   const {query, datatype, minScore, sort, order, page} = diseaseState;
   const offset = (page-1)*DISEASE_PAGE_SIZE;
-
+ 
   let results, count;
   if(USING_LIVE_API){
     const params = new URLSearchParams({sort, order, limit:DISEASE_PAGE_SIZE, offset});
@@ -1663,7 +1741,7 @@ async function loadDiseasePage(){
     count = all.length;
     results = all.slice(offset, offset+DISEASE_PAGE_SIZE);
   }
-
+ 
   document.getElementById("disease-loading").style.display = "none";
   document.getElementById("disease-table-wrap").style.display = "block";
   const tbody = document.getElementById("disease-table-body");
@@ -1674,7 +1752,7 @@ async function loadDiseasePage(){
       <td class="mono">${d.evidence_count}</td>
       <td style="font-size:12px; color:var(--muted);">${d.datatypes.join(", ").replace(/_/g," ")}</td>
     </tr>`).join("") : `<tr><td colspan="4" style="text-align:center; color:var(--faint); padding:20px;">No associations match these filters.</td></tr>`;
-
+ 
   const totalPages = Math.max(1, Math.ceil(count/DISEASE_PAGE_SIZE));
   const pag = document.getElementById("disease-pagination");
   pag.innerHTML = `
@@ -1697,7 +1775,7 @@ async function loadDiseasePage(){
   pageInput.addEventListener("blur", jump);
 }
 function goDiseasePage(p){ diseaseState.page = p; loadDiseasePage(); }
-
+ 
 function ensureDiseasesLoaded(){
   if(!currentDetailUniprot) return;
   loadDiseasePage();
@@ -1716,7 +1794,7 @@ document.getElementById("disease-min-score").addEventListener("input", e=>{
 document.getElementById("disease-sort-select").addEventListener("change", e=>{
   diseaseState.sort = e.target.value; diseaseState.page = 1; loadDiseasePage();
 });
-
+ 
 function buildVariantsPanel(p){
   const v = p.variant_stats;
   if(!v){
@@ -1729,7 +1807,7 @@ function buildVariantsPanel(p){
   const diseaseChips = v.disease_names.length
     ? v.disease_names.map(n=>`<span class="cond-tag" style="background:var(--teal-soft); color:#13463D;">${n}</span>`).join("")
     : `<span style="color:var(--faint); font-size:12.5px;">None recorded</span>`;
-
+ 
   return `
     <h3>Variant &amp; RNA-binding protein data</h3>
     <div class="kv-list" style="margin-bottom:20px;">
@@ -1737,12 +1815,12 @@ function buildVariantsPanel(p){
       <div><span>RNA-binding protein</span><b>${v.is_rbp ? "Yes" : "No"}</b></div>
       <div><span>Has annotated RBD</span><b>${v.has_rbd ? "Yes" : "No"}</b></div>
     </div>
-
+ 
     <div style="margin-bottom:20px;">
       <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">RNA-binding domains</span>
       <div class="cond-tags" style="max-width:none;">${rbdChips}</div>
     </div>
-
+ 
     <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">ClinVar-derived variant classification counts</span>
     <table class="results-table" style="margin-bottom:20px;">
       <thead><tr><th></th><th>Not in classical RBD</th><th>In classical RBD</th><th>Total</th></tr></thead>
@@ -1753,12 +1831,12 @@ function buildVariantsPanel(p){
       </tbody>
     </table>
     <p class="subnote" style="margin-bottom:20px;">VUS = variant of uncertain significance. "Classical RBD" refers to canonical RNA-binding domains as annotated in the source reference set.</p>
-
+ 
     <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">Known disease associations (named)</span>
     <div class="cond-tags" style="max-width:none;">${diseaseChips}</div>
   `;
 }
-
+ 
 function switchTab(name){
   document.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("active", b.dataset.tab===name));
   document.querySelectorAll(".tab-content").forEach(c=>c.classList.toggle("active", c.id==="tab-"+name));
@@ -1767,7 +1845,7 @@ function switchTab(name){
 document.querySelectorAll(".tabbar button").forEach(b=>{
   b.addEventListener("click", ()=>switchTab(b.dataset.tab));
 });
-
+ 
 /* ============================================================
    BOOT
    ============================================================ */

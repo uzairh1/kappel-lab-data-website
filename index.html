@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
+ 
 <header class="topnav">
   <div class="shell nav-row">
     <div class="logo"><span>Kappel Lab Data Website</span><span class="logo-tag">pilot</span><span class="logo-tag" id="data-source-badge" style="display:none;"></span></div>
@@ -26,14 +26,14 @@
     </div>
   </div>
 </header>
-
+ 
 <!-- ================= HOME ================= -->
 <div class="view active" id="view-home">
   <div class="shell">
     <section class="hero">
       <div class="hero-kicker">Pilot release · 101 curated proteins</div>
       <p class="hero-sub">This resource links per-residue intrinsic disorder predictions, sequence biophysics, and reported biomolecular condensate membership for a curated set of human proteins — built to scale toward a full proteome-wide release.</p>
-
+ 
       <div class="hero-search">
         <div class="hero-search-box">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C949C" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -47,7 +47,7 @@
         <button data-example="CACYBP">CACYBP</button>
         <button data-example="CADM1">CADM1</button>
       </div>
-
+ 
       <div class="track-panel">
         <div class="track-panel-head" id="hero-track-label"></div>
         <svg id="hero-track-svg" preserveAspectRatio="none"></svg>
@@ -57,12 +57,12 @@
         </div>
       </div>
     </section>
-
+ 
     <section class="stats">
       <div class="stats" id="stats-grid" style="display:contents;"></div>
     </section>
     <div class="stats-note">Pilot dataset — the full release is designed to scale to proteome-wide coverage with accompanying microscopy and structural data (multi-TB).</div>
-
+ 
     <section id="browse-anchor">
       <div class="section-head">
         <div><div class="eyebrow">Browse</div><h2>By condensate</h2></div>
@@ -70,7 +70,7 @@
       </div>
       <div class="chip-grid" id="condensate-grid"></div>
     </section>
-
+ 
     <section id="downloads-anchor">
       <div class="section-head">
         <div><div class="eyebrow">Spotlight</div><h2>Featured protein</h2></div>
@@ -79,14 +79,14 @@
     </section>
   </div>
 </div>
-
+ 
 <!-- ================= SEARCH / TABLE VIEW ================= -->
 <div class="view" id="view-search">
   <div class="shell">
     <div class="section-head">
       <div><div class="eyebrow" id="search-eyebrow">Browse</div><h2 id="search-title">All proteins</h2></div>
     </div>
-
+ 
     <div class="filter-bar">
       <div class="fitem">
         <input id="filter-search" type="text" placeholder="search gene / UniProt…" style="width:170px;">
@@ -134,13 +134,13 @@
             </select>
           </label>
           <input id="condensate-type-filter" type="text" placeholder="Condensate type contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
-
+ 
           <h5>Interactions</h5>
           <input id="ppi-partner-filter" type="text" placeholder="PPI partner UniProt ID" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
-
+ 
           <h5>Gene annotation</h5>
           <input id="go-term-filter" type="text" placeholder="GO term contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
-
+ 
           <h5>Architecture</h5>
           <input id="domain-name-filter" type="text" placeholder="Named domain contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:10px;">
@@ -149,7 +149,7 @@
             <span style="font-size:11.5px; color:var(--faint);">–</span>
             <input id="domain-end-filter" type="number" placeholder="end" style="width:60px; font-family:var(--font-mono); font-size:11px; padding:3px;">
           </div>
-
+ 
           <h5>Biophysics — IDR segments</h5>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
             <span style="font-size:12px; width:36px;">κ:</span>
@@ -161,10 +161,10 @@
             <input id="idr-fcr-min" type="number" step="0.01" placeholder="min" style="width:70px; font-family:var(--font-mono); font-size:11px; padding:3px;">
             <input id="idr-fcr-max" type="number" step="0.01" placeholder="max" style="width:70px; font-family:var(--font-mono); font-size:11px; padding:3px;">
           </div>
-
+ 
           <h5>Diseases</h5>
           <input id="disease-filter" type="text" placeholder="Disease ID contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
-
+ 
           <h5>Variants &amp; RBP</h5>
           <label style="display:block; font-size:12px; margin-bottom:8px;">RBP status:
             <select id="is-rbp-select" style="margin-left:6px;">
@@ -178,10 +178,19 @@
           <input id="molecular-consequence-filter" type="text" placeholder="Molecular consequence contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
           <input id="variant-classification-filter" type="text" placeholder="Variant classification contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
           <input id="gene-type-filter" type="text" placeholder="Gene type contains…" style="width:100%; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+ 
+          <h5>Tissues</h5>
+          <input id="tissue-name-filter" type="text" placeholder="Tissue or organ contains…" style="width:100%; margin-bottom:6px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span style="font-size:11.5px; color:var(--faint);">RNA expression</span>
+            <input id="tissue-rna-min" type="number" placeholder="min" style="width:65px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+            <input id="tissue-rna-max" type="number" placeholder="max" style="width:65px; font-family:var(--font-mono); font-size:11px; padding:3px;">
+          </div>
+          <p class="subnote" style="margin-top:4px; font-size:10.5px;">Note: nearly every protein has an entry for every tissue — pair the name with a minimum expression value for a meaningful filter.</p>
         </div>
       </div>
     </div>
-
+ 
     <div class="search-toolbar">
       <div class="results-count"><b id="results-n">—</b> proteins matched</div>
       <div class="toolbar-actions">
@@ -191,7 +200,7 @@
         </div>
       </div>
     </div>
-
+ 
     <div class="table-scroll-wrap">
       <table class="results-table">
         <thead id="results-thead"></thead>
@@ -200,12 +209,12 @@
     </div>
   </div>
 </div>
-
+ 
 <!-- ================= DETAIL VIEW ================= -->
 <div class="view" id="view-detail">
   <div class="shell">
     <button class="btn secondary" style="margin-bottom:22px; font-size:12.5px; padding:8px 14px;" onclick="showView('search')">← Back to results</button>
-
+ 
     <div class="detail-header">
       <div>
         <div class="eyebrow" id="d-eyebrow">Dominant isoform</div>
@@ -219,12 +228,13 @@
         <button class="btn" onclick="switchTab('downloads')">Download data</button>
       </div>
     </div>
-
+ 
     <div class="tabbar">
       <button data-tab="mutantview" class="active">Mutant view</button>
       <button data-tab="overview">Overview</button>
       <button data-tab="architecture">Architecture</button>
       <button data-tab="condensates">Condensates</button>
+      <button data-tab="tissues">Tissues</button>
       <button data-tab="diseases">Diseases</button>
       <button data-tab="variants">Variants &amp; RBP</button>
       <button data-tab="biophysics">Biophysics</button>
@@ -233,7 +243,7 @@
       <button data-tab="annotation">Gene Annotation</button>
       <button data-tab="downloads">Downloads</button>
     </div>
-
+ 
     <div class="tab-content active" id="tab-mutantview">
       <div class="panel">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:6px;">
@@ -241,7 +251,7 @@
           <span class="mock-badge">⚠ Mock data — pending real dataset from Hoffman2 filter job</span>
         </div>
         <p class="subnote" style="margin-bottom:16px;">Each row is one isoform, drawn to its real relative length. Markers show variant position; color = clinical classification, shape = associated condition. Click a marker for full detail.</p>
-
+ 
         <div class="filter-bar" style="margin-bottom:16px;">
           <label class="fitem" style="cursor:pointer;"><input type="checkbox" id="mv-dominant-only" checked> Dominant isoform only</label>
           <div class="divider"></div>
@@ -254,15 +264,15 @@
             <select id="mv-condition-filter"><option value="">Any</option></select>
           </div>
         </div>
-
+ 
         <div id="mv-isoform-list"></div>
-
+ 
         <div class="mv-legend" id="mv-legend"></div>
       </div>
-
+ 
       <div class="panel" id="mv-detail-panel" style="display:none; margin-top:16px;"></div>
     </div>
-
+ 
     <div class="tab-content" id="tab-overview">
       <div class="detail-grid">
         <div class="panel">
@@ -275,7 +285,7 @@
         </div>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-architecture">
       <div class="panel">
         <h3>Sequence architecture</h3>
@@ -283,19 +293,41 @@
         <div class="track-legend" id="d-arch-legend" style="margin-top:14px;"></div>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-condensates">
       <div class="panel">
         <h3>Reported condensate membership</h3>
         <div class="cond-card-list" id="d-condensates"></div>
       </div>
     </div>
-
+ 
+    <div class="tab-content" id="tab-tissues">
+      <div class="panel">
+        <h3>Tissue &amp; cell-type expression</h3>
+        <p class="subnote" style="margin-bottom:14px;">RNA expression (TPM-style value) and protein-level detection across tissues, from Human Protein Atlas-derived data.</p>
+        <div class="filter-bar" style="margin-bottom:14px;">
+          <div class="fitem">
+            Sort by:
+            <select id="tissue-sort">
+              <option value="rna_desc">RNA expression (high to low)</option>
+              <option value="rna_asc">RNA expression (low to high)</option>
+              <option value="label">Tissue name (A-Z)</option>
+            </select>
+          </div>
+          <div class="divider"></div>
+          <div class="fitem">
+            <input id="tissue-search" type="text" placeholder="Search tissue or organ…" style="width:180px;">
+          </div>
+        </div>
+        <div id="d-tissues" class="empty-note">Loading…</div>
+      </div>
+    </div>
+ 
     <div class="tab-content" id="tab-diseases">
       <div class="panel">
         <h3>Disease associations <span class="mono" id="d-disease-count-label" style="font-size:12px; color:var(--faint); font-weight:400;"></span></h3>
         <p class="subnote" style="margin-top:-6px; margin-bottom:16px;">Sourced from Open Targets association evidence, aggregated to one row per disease (highest score across evidence records, summed evidence count). Filter and sort below rather than scrolling everything at once — some proteins have 1,000+ associations.</p>
-
+ 
         <div class="filter-bar" style="margin-bottom:16px;">
           <div class="fitem"><input id="disease-search" type="text" placeholder="filter by EFO / MONDO id…" style="width:170px;"></div>
           <div class="divider"></div>
@@ -318,7 +350,7 @@
             </select>
           </div>
         </div>
-
+ 
         <div id="disease-loading" class="empty-note">Loading disease associations…</div>
         <div class="table-scroll-wrap" id="disease-table-wrap" style="display:none; max-height:420px;">
           <table class="results-table">
@@ -329,11 +361,11 @@
         <div class="pagination" id="disease-pagination"></div>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-variants">
       <div class="panel" id="d-variants-panel"></div>
     </div>
-
+ 
     <div class="tab-content" id="tab-biophysics">
       <div class="panel">
         <h3>Sequence-derived biophysical properties</h3>
@@ -367,7 +399,7 @@
         <p class="subnote">From coarse-grained simulation, averaged across replicate runs. Not experimental measurement.</p>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-sequence">
       <div class="panel">
         <h3>Reference sequence &amp; identifiers</h3>
@@ -376,7 +408,7 @@
         <div class="seq-box" id="d-full-sequence" style="max-height:260px; overflow-y:auto;"></div>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-interactions">
       <div class="panel">
         <h3>Protein-protein interaction partners <span class="mono" id="d-ppi-count-label" style="font-size:12px; color:var(--faint); font-weight:400;"></span></h3>
@@ -392,7 +424,7 @@
         </div>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-annotation">
       <div class="detail-grid">
         <div class="panel">
@@ -427,7 +459,7 @@
         <div class="kv-list" id="d-homology-kv"></div>
       </div>
     </div>
-
+ 
     <div class="tab-content" id="tab-downloads">
       <div class="detail-grid">
         <div class="panel">
@@ -445,7 +477,7 @@ fetch('data.json')<br>
     </div>
   </div>
 </div>
-
+ 
 <footer>
   <div class="shell">
     <div class="footer-row">
@@ -471,7 +503,7 @@ fetch('data.json')<br>
     </div>
   </div>
 </footer>
-
+ 
 <script src="app.js"></script>
 </body>
 </html>
