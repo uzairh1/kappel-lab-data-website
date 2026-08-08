@@ -41,6 +41,7 @@ function init(){
   badge.textContent = USING_LIVE_API ? "● live API" : "○ static demo data";
   badge.style.color = USING_LIVE_API ? "var(--teal)" : "var(--faint)";
   document.getElementById("cross-filters-dropdown").style.display = USING_LIVE_API ? "inline-block" : "none";
+  document.getElementById("top-rbp-filter-wrap").style.display = USING_LIVE_API ? "flex" : "none";
   document.getElementById("api-only-filters-divider").style.display = USING_LIVE_API ? "block" : "none";
   buildHeroTrack();
   buildStats();
@@ -253,6 +254,7 @@ const COLUMNS = [
   {key:"dg", label:"ΔG phase sep. (kT)", default:false},
   {key:"diseases", label:"Disease associations", default:false},
   {key:"rbp", label:"RNA-binding protein", default:false},
+  {key:"rbd_type", label:"RNA-binding domain type", default:false},
   {key:"pathogenic", label:"Pathogenic variants (total)", default:false},
 ];
 let activeColumns = new Set(COLUMNS.filter(c=>c.default).map(c=>c.key));
@@ -352,7 +354,7 @@ document.getElementById("idr-fcr-max").addEventListener("change", e=>{
 document.getElementById("disease-filter").addEventListener("change", e=>{
   diseaseFilter = e.target.value; renderResults();
 });
-document.getElementById("is-rbp-select").addEventListener("change", e=>{
+document.getElementById("top-rbp-select").addEventListener("change", e=>{
   isRbpFilter = e.target.value; renderResults();
 });
 document.getElementById("min-pathogenic-filter").addEventListener("change", e=>{
@@ -421,6 +423,11 @@ function cellFor(key, p){
     case "rbp": {
       if(!p.variant_stats) return `<span class="badge no">No data</span>`;
       return p.variant_stats.is_rbp ? `<span class="badge yes">RBP</span>` : `<span class="badge no">No</span>`;
+    }
+    case "rbd_type": {
+      const names = p.variant_stats?.rbd_names;
+      if(!names || !names.length) return `<span class="mono" style="color:var(--faint);">—</span>`;
+      return names.join(", ");
     }
     case "pathogenic": {
       if(!p.variant_stats) return `<span class="mono" style="color:var(--faint);">—</span>`;

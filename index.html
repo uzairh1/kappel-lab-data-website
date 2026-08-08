@@ -112,6 +112,14 @@
           <option value="no">Alternative</option>
         </select>
       </div>
+      <div class="fitem" id="top-rbp-filter-wrap" style="display:none;" title="Needs the live API — not available on the static fallback">
+        RBP:
+        <select id="top-rbp-select">
+          <option value="">Any</option>
+          <option value="true">RBP</option>
+          <option value="false">Not RBP</option>
+        </select>
+      </div>
       <div class="divider"></div>
       <div class="fitem">
         Min. disorder:
@@ -166,11 +174,6 @@
           <input id="disease-filter" type="text" placeholder="Disease ID contains…" style="width:100%; margin-bottom:10px; padding:5px; font-family:var(--font-mono); font-size:11.5px; border:1px solid var(--line-strong); border-radius:5px;">
  
           <h5>Variants &amp; RBP</h5>
-          <label style="display:block; font-size:12px; margin-bottom:8px;">RBP status:
-            <select id="is-rbp-select" style="margin-left:6px;">
-              <option value="">Any</option><option value="true">RBP</option><option value="false">Not RBP</option>
-            </select>
-          </label>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
             <span style="font-size:12px;">Min. pathogenic variants:</span>
             <input id="min-pathogenic-filter" type="number" min="0" placeholder="0" style="width:60px; font-family:var(--font-mono); font-size:11px; padding:3px;">
@@ -507,3 +510,4 @@ fetch('data.json')<br>
 <script src="app.js"></script>
 </body>
 </html>
+ 
