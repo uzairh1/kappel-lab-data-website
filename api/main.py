@@ -7,21 +7,21 @@ couldn't support real cross-table filtering (by IDR segment kappa, PPI
 partner, condensate name, GO term, etc.) without eagerly loading every
 protein's full detail into every request -- exactly the problem the
 Postgres migration exists to solve.
- 
+
 R2 note (still fully separate, still on hold): this API serves METADATA
 from Postgres. The big per-protein detail/mutation files stay wherever
 they currently live (git/GitHub Pages for now) -- this file doesn't touch
 that at all. See ingest_to_postgres.py's docstring for the same note.
- 
+
 Setup:
     export DATABASE_URL="postgresql://user:password@host:port/dbname"
     pip install -r requirements.txt
     uvicorn main:app --reload --port 8000
- 
+
 Then visit:
     http://localhost:8000/docs
 """
- 
+
 import os
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,28 +29,28 @@ from typing import Optional, List
 from pydantic import BaseModel
 import psycopg2
 import psycopg2.extras
- 
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
- 
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable not set -- see this file's docstring.")
- 
+
 def get_conn():
     conn = psycopg2.connect(DATABASE_URL)
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     return conn
- 
+
 app = FastAPI(
     title="Kappel Lab Data Website API",
     description="Intrinsic disorder, sequence biophysics, and condensate membership for a curated protein set -- backed by Postgres.",
     version="0.2.0-postgres",
 )
- 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -61,7 +61,7 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
- 
+
 # numeric fields on the proteins table that support min_/max_ query params --
 # same 14 fields as the frontend's "Metric filters" dropdown, kept in sync
 # deliberately so the API and UI offer the same filtering surface
@@ -70,10 +70,10 @@ NUMERIC_FIELDS = [
     "fcr", "ncpr", "kappa", "mean_hydropathy", "isoelectric_point", "molecular_weight",
     "saturation_conc_uM", "delta_g_kt", "disease_count",
 ]
- 
- 
+
+
 # ---------- response models ----------
- 
+
 class ProteinSummary(BaseModel):
     uniprot: str
     gene: str
@@ -86,21 +86,21 @@ class ProteinSummary(BaseModel):
     condensates: Optional[List[str]]
     ppi_partner_count: Optional[int]
     disease_count: Optional[int]
- 
+
 class PaginatedProteins(BaseModel):
     count: int
     limit: int
     offset: int
     results: List[dict]
- 
+
 class StatsResponse(BaseModel):
     total_proteins: int
     condensate_forming: int
     distinct_condensates: int
- 
- 
+
+
 # ---------------------------- endpoints ----------------------------
- 
+
 @app.get("/api/stats", response_model=StatsResponse, tags=["meta"])
 def get_stats():
     conn = get_conn()
@@ -111,8 +111,8 @@ def get_stats():
     distinct = cur.fetchone()["n"]
     conn.close()
     return StatsResponse(total_proteins=row["n"], condensate_forming=row["forming"], distinct_condensates=distinct)
- 
- 
+
+
 @app.get("/api/condensates", tags=["meta"])
 def list_condensates():
     """Distinct condensates, with member counts -- now from the real condensate_details table."""
@@ -126,8 +126,8 @@ def list_condensates():
     rows = cur.fetchall()
     conn.close()
     return rows
- 
- 
+
+
 @app.get("/api/proteins", response_model=PaginatedProteins, tags=["proteins"])
 def list_proteins(
     request: Request,
@@ -152,6 +152,7 @@ def list_proteins(
     variant_classification: Optional[str] = Query(None, description="Substring search across this protein's variant classifications (e.g. 'Pathogenic', 'Uncertain significance')"),
     condensate_type: Optional[str] = Query(None, description="Substring search across this protein's condensate types (e.g. 'biomolecular')"),
     gene_type: Optional[str] = Query(None, description="Substring search on gene type (e.g. 'protein-coding')"),
+    rbd_type: Optional[str] = Query(None, description="Substring search across this protein's RNA-binding domain types (e.g. 'RRM', 'Helicase')"),
     tissue: Optional[str] = Query(None, description="Substring search across tissue/organ names"),
     min_tissue_rna: Optional[float] = Query(None, description="Combined with tissue: minimum RNA expression value in that tissue"),
     max_tissue_rna: Optional[float] = Query(None),
@@ -175,9 +176,9 @@ def list_proteins(
     """
     conn = get_conn()
     cur = conn.cursor()
- 
+
     where, params = ["1=1"], []
- 
+
     if q:
         where.append("(LOWER(gene) LIKE %s OR LOWER(uniprot) LIKE %s)")
         params += [f"%{q.lower()}%", f"%{q.lower()}%"]
@@ -187,7 +188,7 @@ def list_proteins(
         where.append("%s = ANY(condensates)"); params.append(condensate)
     if dominant is not None:
         where.append("dominant = %s"); params.append(dominant)
- 
+
     for field in NUMERIC_FIELDS:
         min_val = request.query_params.get(f"min_{field}")
         max_val = request.query_params.get(f"max_{field}")
@@ -195,7 +196,7 @@ def list_proteins(
             where.append(f"{field} >= %s"); params.append(float(min_val))
         if max_val is not None:
             where.append(f"{field} <= %s"); params.append(float(max_val))
- 
+
     if condensatopathy:
         where.append("EXISTS (SELECT 1 FROM condensate_details cd WHERE cd.uniprot = proteins.uniprot AND cd.condensatopathy = %s)")
         params.append(condensatopathy)
@@ -249,6 +250,9 @@ def list_proteins(
     if gene_type:
         where.append("LOWER(variant_stats->>'gene_type') LIKE %s")
         params.append(f"%{gene_type.lower()}%")
+    if rbd_type:
+        where.append("EXISTS (SELECT 1 FROM jsonb_array_elements_text(variant_stats->'rbd_names') elem WHERE LOWER(elem) LIKE %s)")
+        params.append(f"%{rbd_type.lower()}%")
     if tissue:
         clause = "EXISTS (SELECT 1 FROM tissue_expression t WHERE t.uniprot = proteins.uniprot AND (LOWER(t.label) LIKE %s OR EXISTS (SELECT 1 FROM unnest(t.organs) o WHERE LOWER(o) LIKE %s))"
         clause_params = [f"%{tissue.lower()}%", f"%{tissue.lower()}%"]
@@ -261,17 +265,17 @@ def list_proteins(
         clause += ")"
         where.append(clause)
         params += clause_params
- 
+
     valid_sorts = {"gene", "disease_count", "ppi_partner_count", "length"} | set(NUMERIC_FIELDS)
     if sort not in valid_sorts:
         conn.close()
         raise HTTPException(400, f"sort must be one of {sorted(valid_sorts)}")
     order_sql = "DESC" if order == "desc" else "ASC"
- 
+
     where_sql = " AND ".join(where)
     cur.execute(f"SELECT count(*) AS n FROM proteins WHERE {where_sql}", params)
     total = cur.fetchone()["n"]
- 
+
     cur.execute(
         f"SELECT * FROM proteins WHERE {where_sql} ORDER BY {sort} {order_sql} NULLS LAST LIMIT %s OFFSET %s",
         params + [limit, offset],
@@ -279,8 +283,8 @@ def list_proteins(
     rows = cur.fetchall()
     conn.close()
     return PaginatedProteins(count=total, limit=limit, offset=offset, results=rows)
- 
- 
+
+
 @app.get("/api/proteins/{uniprot}", tags=["proteins"])
 def get_protein(uniprot: str):
     conn = get_conn()
@@ -292,8 +296,8 @@ def get_protein(uniprot: str):
         raise HTTPException(404, f"No protein found with UniProt ID '{uniprot}'")
     conn.close()
     return row
- 
- 
+
+
 @app.get("/api/proteins/{uniprot}/diseases", tags=["diseases"])
 def get_protein_diseases(
     uniprot: str,
@@ -310,20 +314,20 @@ def get_protein_diseases(
     if not cur.fetchone():
         conn.close()
         raise HTTPException(404, f"No protein found with UniProt ID '{uniprot}'")
- 
+
     where, params = ["uniprot = %s"], [uniprot.upper()]
     if q:
         where.append("LOWER(disease_id) LIKE %s"); params.append(f"%{q.lower()}%")
     if min_score:
         where.append("score >= %s"); params.append(min_score)
- 
+
     valid_sorts = {"score", "evidence_count", "disease_id"}
     if sort not in valid_sorts:
         conn.close()
         raise HTTPException(400, f"sort must be one of {valid_sorts}")
     order_sql = "DESC" if order == "desc" else "ASC"
     where_sql = " AND ".join(where)
- 
+
     cur.execute(f"SELECT count(*) AS n FROM diseases WHERE {where_sql}", params)
     total = cur.fetchone()["n"]
     cur.execute(f"SELECT * FROM diseases WHERE {where_sql} ORDER BY {sort} {order_sql} LIMIT %s OFFSET %s",
@@ -331,8 +335,8 @@ def get_protein_diseases(
     rows = cur.fetchall()
     conn.close()
     return {"count": total, "limit": limit, "offset": offset, "results": rows}
- 
- 
+
+
 @app.get("/api/proteins/{uniprot}/ppi", tags=["interactions"])
 def get_protein_ppi(uniprot: str, limit: int = Query(50, ge=1, le=1000)):
     conn = get_conn()
@@ -342,8 +346,8 @@ def get_protein_ppi(uniprot: str, limit: int = Query(50, ge=1, le=1000)):
     rows = cur.fetchall()
     conn.close()
     return rows
- 
- 
+
+
 @app.get("/api/proteins/{uniprot}/idr-segments", tags=["biophysics"])
 def get_protein_idr_segments(uniprot: str):
     conn = get_conn()
@@ -352,8 +356,8 @@ def get_protein_idr_segments(uniprot: str):
     rows = cur.fetchall()
     conn.close()
     return rows
- 
- 
+
+
 @app.get("/", tags=["meta"])
 def root():
     return {

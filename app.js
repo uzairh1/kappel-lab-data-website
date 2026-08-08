@@ -384,6 +384,11 @@ document.getElementById("gene-type-filter").addEventListener("change", e=>{
   geneTypeFilter = e.target.value; renderResults();
 });
 
+let rbdTypeFilter = "";
+document.getElementById("rbd-type-filter").addEventListener("change", e=>{
+  rbdTypeFilter = e.target.value; renderResults();
+});
+
 let tissueNameFilter = "", tissueRnaMin = null, tissueRnaMax = null;
 document.getElementById("tissue-name-filter").addEventListener("change", e=>{
   tissueNameFilter = e.target.value; renderResults();
@@ -422,7 +427,7 @@ function cellFor(key, p){
         : `<span class="badge no">None recorded</span>`;
     case "rbp": {
       if(!p.variant_stats) return `<span class="badge no">No data</span>`;
-      return p.variant_stats.is_rbp ? `<span class="badge yes">RBP</span>` : `<span class="badge no">No</span>`;
+      return p.variant_stats.is_rbp ? `<span class="badge yes">Yes</span>` : `<span class="badge no">No</span>`;
     }
     case "rbd_type": {
       const names = p.variant_stats?.rbd_names;
@@ -543,6 +548,7 @@ async function renderResultsFromAPI(){
   if(molecularConsequenceFilter.trim()) params.set("molecular_consequence", molecularConsequenceFilter.trim());
   if(variantClassificationFilter.trim()) params.set("variant_classification", variantClassificationFilter.trim());
   if(geneTypeFilter.trim()) params.set("gene_type", geneTypeFilter.trim());
+  if(rbdTypeFilter.trim()) params.set("rbd_type", rbdTypeFilter.trim());
   if(tissueNameFilter.trim()) params.set("tissue", tissueNameFilter.trim());
   if(tissueRnaMin !== null) params.set("min_tissue_rna", tissueRnaMin);
   if(tissueRnaMax !== null) params.set("max_tissue_rna", tissueRnaMax);
