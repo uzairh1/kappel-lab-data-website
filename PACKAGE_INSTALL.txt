@@ -1,0 +1,30 @@
+DIST PACKAGING UPDATE
+=====================
+
+Copy this pipeline/ directory over the pipeline/ directory on your cleanup branch.
+No website files or JSON files are included in this ZIP.
+
+1. Make sure your current generated site data exists and is valid:
+
+       python -m pipeline.build
+
+   (Only add --mutations/--mutations-filtered when you intentionally want to
+   rebuild mutation data.)
+
+2. Package the current site into a fresh dist/ directory:
+
+       python -m pipeline.package
+
+3. Preview ONLY the packaged site:
+
+       cd dist
+       python -m http.server 8000
+
+   Open http://localhost:8000 and click around.
+
+4. Add this line to your repo's .gitignore if it is not already present:
+
+       dist/
+
+Do not change GitHub Pages settings yet. The purpose of this pass is only to
+prove that dist/ is a self-contained copy of the existing site.
