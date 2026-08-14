@@ -11,27 +11,7 @@ from typing import Any
 import pandas as pd
 
 from .common import avg_list, parse_dict, parse_numpyish, parse_ot_field, parse_pylist
-
-IDR_METRICS = {
-    "fcr": "IDR_FCR",
-    "ncpr": "IDR_NCPR",
-    "kappa": "IDR_kappa",
-    "delta": "IDR_delta",
-    "delta_max": "IDR_deltaMax",
-    "isoelectric_point": "IDR_isoelectric_point",
-    "molecular_weight": "IDR_molecular_weight",
-    "count_neg": "IDR_countNeg",
-    "count_pos": "IDR_countPos",
-    "count_neut": "IDR_countNeut",
-    "fraction_negative": "IDR_fraction_negative",
-    "fraction_positive": "IDR_fraction_positive",
-    "fraction_expanding": "IDR_fraction_expanding",
-    "fraction_disorder_promoting": "IDR_fraction_disorder_promoting",
-    "mean_net_charge": "IDR_mean_net_charge",
-    "mean_hydropathy": "IDR_mean_hydropathy",
-    "uversky_hydropathy": "IDR_uversky_hydropathy",
-    "ppii_propensity": "IDR_PPII_propensity",
-}
+from pipeline.field_families import CONDENSATE_FIELDS, domain_fields, idr_fields
 
 
 def _parse_list(value: Any) -> list:
@@ -48,7 +28,8 @@ def _parse_list(value: Any) -> list:
 def build_idr_segments(row) -> list[dict[str, Any]]:
     """Build one canonical object per IDR from parallel source columns."""
     ranges = [(int(a), int(b)) for a, b in _parse_list(row.get("IDR_range"))]
-    metric_values = {key: _parse_list(row.get(column)) for key, column in IDR_METRICS.items()}
+    metric_specs = idr_fields(row.index)
+    metric_values = {spec.output: _parse_list(row.get(spec.source)) for spec in metric_specs}
     amino_acid_fractions = _parse_list(row.get("IDR_amino_acid_fractions"))
 
     segments = []
@@ -65,8 +46,8 @@ def build_idr_segments(row) -> list[dict[str, Any]]:
 
 def idr_alignment_lengths(row) -> dict[str, int]:
     lengths = {"IDR_range": len(_parse_list(row.get("IDR_range")))}
-    for column in IDR_METRICS.values():
-        lengths[column] = len(_parse_list(row.get(column)))
+    for spec in idr_fields(row.index):
+        lengths[spec.source] = len(_parse_list(row.get(spec.source)))
     lengths["IDR_amino_acid_fractions"] = len(_parse_list(row.get("IDR_amino_acid_fractions")))
     return lengths
 
@@ -100,24 +81,17 @@ def build_region_sequences(row) -> dict[str, Any]:
 
 
 def build_domain_types(row) -> list[dict[str, Any]]:
-    """Build domain-type records from dictionaries keyed by domain name."""
+    """Build domain-type records from dictionaries keyed by domain name.
+
+    Any new ``Domains_<NAME>`` column is automatically attached as ``<name>``
+    as long as its cell parses as a dictionary keyed by the existing domain
+    names. Historical fields keep their current output names.
+    """
     def d(column: str):
-        return parse_dict(row[column])
+        return parse_dict(row.get(column))
 
     counts = d("Domains_count")
-    fields = {
-        "avg_size": d("Domains_avg_size"), "total_size": d("Domains_total_size"),
-        "fcr": d("Domains_FCR"), "ncpr": d("Domains_NCPR"), "kappa": d("Domains_kappa"),
-        "omega": d("Domains_Omega"), "isoelectric_point": d("Domains_isoelectric_point"),
-        "molecular_weight": d("Domains_molecular_weight"), "count_neg": d("Domains_countNeg"),
-        "count_pos": d("Domains_countPos"), "count_neut": d("Domains_countNeut"),
-        "fraction_negative": d("Domains_fraction_negative"), "fraction_positive": d("Domains_fraction_positive"),
-        "fraction_expanding": d("Domains_fraction_expanding"),
-        "fraction_disorder_promoting": d("Domains_fraction_disorder_promoting"),
-        "mean_net_charge": d("Domains_mean_net_charge"), "mean_hydropathy": d("Domains_mean_hydropathy"),
-        "uversky_hydropathy": d("Domains_uversky_hydropathy"), "ppii_propensity": d("Domains_PPII_propensity"),
-        "delta": d("Domains_delta"), "delta_max": d("Domains_deltaMax"),
-    }
+    fields = {spec.output: d(spec.source) for spec in domain_fields(row.index)}
     amino = d("Domains_amino_acid_fractions")
     discrete = d("Domains_discrete_seq")
     concat = d("Domains_concat_seq")
@@ -183,15 +157,8 @@ def build_go_terms(row) -> dict[str, list[dict[str, Any]]]:
 
 
 def build_condensate_details(row, condensate_names: list[Any]) -> list[dict[str, Any]]:
-    fields = {
-        "species_tax_id": parse_pylist(row["Species Tax Id"]),
-        "dna_associated": parse_pylist(row["DNA"]),
-        "rna_associated": parse_pylist(row["RNA"]),
-        "chemical_mods": parse_pylist(row["C-mods"]),
-        "condensatopathy": parse_pylist(row["Condensatopathy"]),
-        "condensate_db_uid": parse_pylist(row["UID"]),
-        "reported_protein_count": parse_pylist(row["Proteins"]),
-    }
+    """Build condensate records using the central explicit field registry."""
+    fields = {spec.output: parse_pylist(row.get(spec.source)) for spec in CONDENSATE_FIELDS}
     return [
         {key: values[i] if i < len(values) else None for key, values in fields.items()}
         for i in range(len(condensate_names))

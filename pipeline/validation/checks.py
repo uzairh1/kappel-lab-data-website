@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from pipeline.field_families import domain_fields
+from pipeline.steps.common import parse_dict
 from pipeline.steps.structured import idr_alignment_lengths
 
 
@@ -21,6 +23,18 @@ def validate_source(df):
             for column in required_idr:
                 if lengths.get(column, 0) == 0:
                     warnings.append(f"{uniprot}: {column} is empty despite {target} IDR(s)")
+
+        # Domain extension fields are dictionaries keyed by the same domain
+        # names as Domains_count. A new Domains_<NAME> column therefore cannot
+        # silently refer to a different set of domains.
+        domain_names = set(parse_dict(row.get("Domains_count")).keys())
+        for spec in domain_fields(row.index):
+            values = parse_dict(row.get(spec.source))
+            extra = set(values) - domain_names
+            if extra:
+                errors.append(
+                    f"Domain field key mismatch for {uniprot}: {spec.source} has unknown domain keys {sorted(extra)}"
+                )
 
     return errors, warnings
 

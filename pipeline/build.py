@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipeline.config import default_paths
+from pipeline.field_families import extension_report
 from pipeline.steps.canonical import build_canonical_records
 from pipeline.steps.details import write_details
 from pipeline.steps.proteins import write_outputs
@@ -25,6 +26,15 @@ def build(root: Path, *, validate_outputs: bool = True, run_variant_stats: bool 
     print(f"[1/5] Loading source data")
     df = pd.read_csv(paths.mini_dataset)
     variant_map = build_variant_stats_map(paths.variant_stats) if run_variant_stats else {}
+    extensions = extension_report(df.columns)
+    for family, specs in extensions.items():
+        for spec in specs:
+            destination = (
+                f"biophysics_regions.idr_segments[].{spec.output}"
+                if family == "idr"
+                else f"domain_types[].{spec.output}"
+            )
+            print(f"  auto-mapped new {family} field: {spec.source} -> {destination}")
 
     print("[2/5] Building canonical protein records")
     records, skipped = build_canonical_records(df, variant_stats_map=variant_map)
