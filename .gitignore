@@ -2,4 +2,10 @@
 __pycache__/*
 *.csv
 *.py[cod]
-dist/
+# Generated website data
+/data.json
+/diseases.json
+/protein_details/
+/tissues/
+/mutations/
+/dist/
