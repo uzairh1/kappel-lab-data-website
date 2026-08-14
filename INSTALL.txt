@@ -1,0 +1,30 @@
+Mutation integration update
+===========================
+
+Copy the `pipeline/` directory from this package over the `pipeline/` directory
+on your cleanup branch. Do not remove the current `mutations/` tree yet.
+
+Normal build (unchanged):
+
+    python -m pipeline.build
+
+Mutation rebuild from the HPC-prefiltered source:
+
+    python -m pipeline.build --mutations variant_positions_prefiltered.csv
+
+Mutation rebuild from the smaller already-filtered intermediate:
+
+    python -m pipeline.build --mutations-filtered variant_positions_filtered.csv
+
+For the FIRST real mutation rebuild, use a disposable copy of the repository or
+make sure your branch is clean so `git diff` can show any differences. The
+pipeline stages a fresh tree and validates it before replacing mutations/, but
+we have not been given your real variant_positions_(pre)filtered.csv here, so
+semantic equivalence against the current mutation tree still needs to be
+confirmed on your data.
+
+Run the included focused mutation tests with:
+
+    python -m unittest -v pipeline.tests.test_mutations
+
+See pipeline/MUTATION_PIPELINE.md for the data lineage and field meanings.

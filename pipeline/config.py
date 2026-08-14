@@ -12,7 +12,8 @@ class PipelinePaths:
     protein_details: Path
     tissues: Path
     mutations: Path
-
+    variant_positions_prefiltered: Path
+    variant_positions_filtered: Path
 
 
 def default_paths(root: Path | None = None) -> PipelinePaths:
@@ -26,4 +27,6 @@ def default_paths(root: Path | None = None) -> PipelinePaths:
         protein_details=root / "protein_details",
         tissues=root / "tissues",
         mutations=root / "mutations",
+        variant_positions_prefiltered=root / "variant_positions_prefiltered.csv",
+        variant_positions_filtered=root / "variant_positions_filtered.csv",
     )
