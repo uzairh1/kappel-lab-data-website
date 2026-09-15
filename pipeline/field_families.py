@@ -1,38 +1,19 @@
-"""Central registry for structured Mini_Dataset column families.
+"""Explicit registry for structured Mini_Dataset column families.
 
 The website source CSV stores several logical objects across parallel columns.
-This module is the one place that defines how those column families map into
-canonical objects.
-
-Two families support convention-based extensions:
-
-* ``IDR_<NAME>`` -> ``biophysics_regions.idr_segments[].<name>``
-* ``Domains_<NAME>`` -> ``domain_types[].<name>``
-
-Known historical columns keep explicit output names for backwards
-compatibility. New columns with those prefixes are discovered automatically,
-validated for alignment, and propagated without changing the transformation
-code.
+This module is the one place that defines how those columns map into canonical
+objects. Fields must be registered here; similarly prefixed source columns are
+intentionally ignored.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Iterable
 
 
 @dataclass(frozen=True)
 class FieldSpec:
     source: str
     output: str
-
-
-def _snake(name: str) -> str:
-    """Convert a source-field suffix to a stable snake_case JSON key."""
-    name = name.strip().replace("-", "_").replace(" ", "_")
-    name = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
-    name = re.sub(r"_+", "_", name)
-    return name.strip("_").lower()
 
 
 # Historical IDR fields. Explicit names preserve the existing public JSON.
@@ -56,17 +37,6 @@ IDR_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("IDR_uversky_hydropathy", "uversky_hydropathy"),
     FieldSpec("IDR_PPII_propensity", "ppii_propensity"),
 )
-
-IDR_STRUCTURAL_COLUMNS = {
-    "IDR_count",
-    "IDR_avg_size",
-    "IDR_total_size",
-    "IDR_range",
-    "IDR_discrete_seq",
-    "IDR_concat_seq",
-    "IDR_amino_acid_fractions",
-}
-
 
 # Historical domain fields. Domains_count is the anchor/key set and is handled
 # separately; range data belongs to the architecture summary and is not folded
@@ -95,16 +65,6 @@ DOMAIN_FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("Domains_deltaMax", "delta_max"),
 )
 
-DOMAIN_STRUCTURAL_COLUMNS = {
-    "Domains",
-    "Domains_count",
-    "Domains_range",
-    "Domains_discrete_seq",
-    "Domains_concat_seq",
-    "Domains_amino_acid_fractions",
-}
-
-
 # Condensate fields do not have a consistent source prefix, so this explicit
 # registry is the intended extension point. Adding a new parallel condensate
 # column requires one FieldSpec here rather than edits throughout the pipeline.
@@ -119,41 +79,11 @@ CONDENSATE_FIELDS: tuple[FieldSpec, ...] = (
 )
 
 
-def _extensions(columns: Iterable[str], *, prefix: str, known: tuple[FieldSpec, ...], reserved: set[str]) -> list[FieldSpec]:
-    known_sources = {field.source for field in known}
-    output_names = {field.output for field in known}
-    discovered: list[FieldSpec] = []
-    for column in columns:
-        if not column.startswith(prefix) or column in known_sources or column in reserved:
-            continue
-        suffix = column[len(prefix):]
-        if not suffix:
-            continue
-        output = _snake(suffix)
-        if not output or output in output_names:
-            continue
-        discovered.append(FieldSpec(column, output))
-        output_names.add(output)
-    return discovered
+def idr_fields() -> tuple[FieldSpec, ...]:
+    """Return the explicitly supported per-IDR fields."""
+    return IDR_FIELDS
 
 
-def idr_fields(columns: Iterable[str]) -> list[FieldSpec]:
-    return list(IDR_FIELDS) + _extensions(
-        columns, prefix="IDR_", known=IDR_FIELDS, reserved=IDR_STRUCTURAL_COLUMNS
-    )
-
-
-def domain_fields(columns: Iterable[str]) -> list[FieldSpec]:
-    return list(DOMAIN_FIELDS) + _extensions(
-        columns, prefix="Domains_", known=DOMAIN_FIELDS, reserved=DOMAIN_STRUCTURAL_COLUMNS
-    )
-
-
-def extension_report(columns: Iterable[str]) -> dict[str, list[FieldSpec]]:
-    columns = list(columns)
-    known_idr = {f.source for f in IDR_FIELDS}
-    known_domain = {f.source for f in DOMAIN_FIELDS}
-    return {
-        "idr": [f for f in idr_fields(columns) if f.source not in known_idr],
-        "domains": [f for f in domain_fields(columns) if f.source not in known_domain],
-    }
+def domain_fields() -> tuple[FieldSpec, ...]:
+    """Return the explicitly supported per-domain fields."""
+    return DOMAIN_FIELDS

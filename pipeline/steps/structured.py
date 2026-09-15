@@ -28,7 +28,7 @@ def _parse_list(value: Any) -> list:
 def build_idr_segments(row) -> list[dict[str, Any]]:
     """Build one canonical object per IDR from parallel source columns."""
     ranges = [(int(a), int(b)) for a, b in _parse_list(row.get("IDR_range"))]
-    metric_specs = idr_fields(row.index)
+    metric_specs = idr_fields()
     metric_values = {spec.output: _parse_list(row.get(spec.source)) for spec in metric_specs}
     amino_acid_fractions = _parse_list(row.get("IDR_amino_acid_fractions"))
 
@@ -46,7 +46,7 @@ def build_idr_segments(row) -> list[dict[str, Any]]:
 
 def idr_alignment_lengths(row) -> dict[str, int]:
     lengths = {"IDR_range": len(_parse_list(row.get("IDR_range")))}
-    for spec in idr_fields(row.index):
+    for spec in idr_fields():
         lengths[spec.source] = len(_parse_list(row.get(spec.source)))
     lengths["IDR_amino_acid_fractions"] = len(_parse_list(row.get("IDR_amino_acid_fractions")))
     return lengths
@@ -83,15 +83,14 @@ def build_region_sequences(row) -> dict[str, Any]:
 def build_domain_types(row) -> list[dict[str, Any]]:
     """Build domain-type records from dictionaries keyed by domain name.
 
-    Any new ``Domains_<NAME>`` column is automatically attached as ``<name>``
-    as long as its cell parses as a dictionary keyed by the existing domain
-    names. Historical fields keep their current output names.
+    Only columns registered in ``DOMAIN_FIELDS`` are attached. Unregistered
+    source columns are ignored.
     """
     def d(column: str):
         return parse_dict(row.get(column))
 
     counts = d("Domains_count")
-    fields = {spec.output: d(spec.source) for spec in domain_fields(row.index)}
+    fields = {spec.output: d(spec.source) for spec in domain_fields()}
     amino = d("Domains_amino_acid_fractions")
     discrete = d("Domains_discrete_seq")
     concat = d("Domains_concat_seq")

@@ -1,18 +1,18 @@
-# Adding complex Mini Dataset fields
+# Registering complex Mini Dataset fields
 
-The pipeline recognizes structured column **families** so new measurements do
-not require another preprocessing script.
+The pipeline uses explicit field registries. A new source column is ignored
+until its source and output names are added to `pipeline/field_families.py`.
 
 ## Per-IDR measurements
 
-Add a column named `IDR_<NAME>` whose cell contains one value per `IDR_range`.
-For example:
+Add a `FieldSpec` to `IDR_FIELDS`. The source cell must contain one value per
+`IDR_range`. For example:
 
-```text
-IDR_SASA
+```python
+FieldSpec("IDR_SASA", "sasa")
 ```
 
-is automatically written as:
+This writes the registered value to:
 
 ```text
 protein_details/<UNIPROT>.json
@@ -24,16 +24,14 @@ mismatch fails validation rather than silently dropping values.
 
 ## Per-domain measurements
 
-Add a column named `Domains_<NAME>` whose cell is a dictionary keyed by the
-same domain names used in `Domains_count`.
+Add a `FieldSpec` to `DOMAIN_FIELDS`. Its source cell must be a dictionary
+keyed by the same domain names used in `Domains_count`. For example:
 
-For example:
-
-```text
-Domains_SASA
+```python
+FieldSpec("Domains_SASA", "sasa")
 ```
 
-is automatically written as:
+This writes the registered value to:
 
 ```text
 protein_details/<UNIPROT>.json
@@ -44,10 +42,8 @@ Unknown domain keys fail validation.
 
 ## Condensate measurements
 
-The current Mini Dataset uses irregular source names for condensate fields, so
-these cannot be inferred safely from a prefix. Add one `FieldSpec` to
-`CONDENSATE_FIELDS` in `pipeline/field_families.py`; no other transformation
-code needs to change.
+Add one `FieldSpec` to `CONDENSATE_FIELDS` in
+`pipeline/field_families.py`.
 
 ## What this does *not* do
 
