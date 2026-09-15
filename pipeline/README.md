@@ -24,6 +24,13 @@ checked-in `pipeline/legacy_variant_stats.json` and
 `pipeline/legacy_gene_annotations.json` lookups. Neither `Mini_Dataset.csv`
 nor `per_protein_variant_stats*.csv` is a build input.
 
+The original 101-protein website catalog is retained as the verified,
+compressed `pipeline/legacy_catalog.tar.gz` snapshot. The build checks its
+hash and manifest, rejects any UniProt collision with the expanded dataset,
+and emits one combined catalog. The archive excludes mutation payloads and is
+about 2.3 MB; it is read directly without unpacking loose legacy JSON into the
+working tree.
+
 Before writing any output, the build rejects missing or duplicate isoform IDs,
 proteins without exactly one dominant row, sequence-length mismatches, IDR
 alignment errors, and domain-key mismatches.

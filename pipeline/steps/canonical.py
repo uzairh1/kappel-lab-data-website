@@ -48,6 +48,7 @@ class CanonicalProtein:
     def details(self) -> dict[str, Any]:
         """Return the existing protein_details JSON shape from canonical fields."""
         return {
+            "catalog_source": "expanded_dataset",
             "sequence": self.sequence,
             "hgvs": self.hgvs,
             "biophysics_regions": self.biophysics_regions,
@@ -63,6 +64,7 @@ class CanonicalProtein:
         }
 
     def finalize(self) -> None:
+        self.summary["catalog_source"] = "expanded_dataset"
         self.summary["disease_count"] = len(self.diseases)
         self.summary["top_diseases"] = self.diseases[:5]
         tissue_rows = self.tissues.get("tissues", [])

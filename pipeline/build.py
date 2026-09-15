@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from pipeline.config import default_paths
+from pipeline.legacy_catalog import LegacyCatalogError, load_legacy_catalog
 from pipeline.steps.canonical import build_canonical_records
 from pipeline.steps.details import write_details
 from pipeline.steps.mutations import MutationBuildError, rebuild_mutations
@@ -33,6 +34,8 @@ def build(
         paths.expanded_dataset,
         paths.legacy_variant_stats,
         paths.legacy_gene_annotations,
+        paths.legacy_catalog,
+        paths.legacy_catalog_manifest,
     ]
     missing = [path for path in required if not path.exists()]
     if missing:
@@ -60,13 +63,13 @@ def build(
     for message in source_warnings:
         print(f"  WARNING: {message}")
 
-    print("[2/5] Building canonical protein records")
-    records, skipped = build_canonical_records(
+    print("[2/5] Building combined legacy + expanded protein catalog")
+    expanded_records, skipped = build_canonical_records(
         df,
         variant_stats_map=variant_map,
         legacy_gene_annotations=legacy_gene_annotations,
     )
-    print(f"  proteins: {len(records)}; failed groups: {len(skipped)}")
+    print(f"  expanded proteins: {len(expanded_records)}; failed groups: {len(skipped)}")
     if skipped:
         for item in skipped[:10]:
             print(f"  ERROR {item['uniprot']} rows {item['rows']}: {item['error']}")
@@ -74,6 +77,28 @@ def build(
             print(f"  ... and {len(skipped) - 10} more")
         print("Canonical build FAILED; no outputs were written.")
         return 1
+
+    try:
+        legacy_records = load_legacy_catalog(
+            paths.legacy_catalog, paths.legacy_catalog_manifest
+        )
+    except LegacyCatalogError as exc:
+        print(f"Legacy catalog validation FAILED: {exc}")
+        return 1
+    legacy_ids = {record.uniprot for record in legacy_records}
+    expanded_ids = {record.uniprot for record in expanded_records}
+    overlap = sorted(legacy_ids & expanded_ids)
+    if overlap:
+        print(
+            "Combined catalog FAILED: UniProt IDs occur in both the frozen legacy "
+            f"snapshot and expanded dataset: {overlap}"
+        )
+        return 1
+    records = legacy_records + expanded_records
+    print(
+        f"  legacy proteins: {len(legacy_records)}; expanded proteins: "
+        f"{len(expanded_records)}; combined proteins: {len(records)}"
+    )
 
     print("[3/5] Writing website JSON products")
     write_outputs(records, paths.data_json, paths.diseases_json)

@@ -131,6 +131,9 @@ def validate_outputs(data_json: Path, diseases_json: Path, protein_details: Path
 
     for p in proteins:
         u = p["uniprot"]
+        source = p.get("catalog_source")
+        if source not in {"legacy_snapshot", "expanded_dataset"}:
+            errors.append(f"Unknown or missing catalog_source for {u}: {source}")
         if u not in diseases:
             warnings.append(f"No disease entry for {u}")
         detail_path = protein_details / f"{u}.json"
@@ -151,7 +154,7 @@ def validate_outputs(data_json: Path, diseases_json: Path, protein_details: Path
                 if len(ids) != len(set(ids)):
                     errors.append(f"Duplicate nested isoform IDs for {u}")
                 dominant_count = sum(isoform.get("dominant") is True for isoform in isoforms)
-                if dominant_count != 1:
+                if source == "expanded_dataset" and dominant_count != 1:
                     errors.append(
                         f"Generated dominant isoform mismatch for {u}: found {dominant_count}"
                     )
@@ -160,7 +163,11 @@ def validate_outputs(data_json: Path, diseases_json: Path, protein_details: Path
                         f"Generated isoform count mismatch for {u}: "
                         f"summary={p.get('isoform_count')}; detail={len(isoforms)}"
                     )
+                if source == "legacy_snapshot" and isoforms:
+                    errors.append(f"Legacy snapshot unexpectedly contains expanded isoforms for {u}")
             if "expanded_annotations" not in detail:
                 errors.append(f"Missing expanded annotations for {u}")
+            if detail.get("catalog_source") != source:
+                errors.append(f"Catalog source mismatch between summary and details for {u}")
 
     return errors, warnings

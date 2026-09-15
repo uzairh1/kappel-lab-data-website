@@ -8,6 +8,8 @@ class PipelinePaths:
     expanded_dataset: Path
     legacy_variant_stats: Path
     legacy_gene_annotations: Path
+    legacy_catalog: Path
+    legacy_catalog_manifest: Path
     data_json: Path
     diseases_json: Path
     protein_details: Path
@@ -27,6 +29,8 @@ def default_paths(root: Path | None = None, dataset: Path | None = None) -> Pipe
         expanded_dataset=dataset,
         legacy_variant_stats=root / "pipeline" / "legacy_variant_stats.json",
         legacy_gene_annotations=root / "pipeline" / "legacy_gene_annotations.json",
+        legacy_catalog=root / "pipeline" / "legacy_catalog.tar.gz",
+        legacy_catalog_manifest=root / "pipeline" / "legacy_catalog_manifest.json",
         data_json=root / "data.json",
         diseases_json=root / "diseases.json",
         protein_details=root / "protein_details",
