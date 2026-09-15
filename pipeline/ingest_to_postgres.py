@@ -30,22 +30,11 @@ try:
 except ImportError:
     pass  # fine if not installed -- DATABASE_URL can still be set directly in the shell environment
  
-DATABASE_URL = os.environ.get("DATABASE_URL")
-if not DATABASE_URL:
-    print("ERROR: DATABASE_URL environment variable not set.")
-    print("Either: (1) put it in a .env file (pip install python-dotenv first), or")
-    print('        (2) set it directly: export DATABASE_URL="postgresql://..."')
-    sys.exit(1)
- 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
- 
- 
-def ingest_proteins():
+def ingest_proteins(cur):
     proteins = json.load(open("data.json"))
     rows = [(
         p["uniprot"], p["gene"], p.get("ensg"), p.get("dominant"), p.get("isoform_number"),
-        p.get("isoform_label"), p.get("isoform_count"), p.get("length"), p.get("idr_count"), p.get("idr_total_size"),
+        p.get("isoform_label"), p.get("isoform_count"), p.get("catalog_source"), p.get("length"), p.get("idr_count"), p.get("idr_total_size"),
         p.get("fold_total_size"), p.get("disorder_fraction"), json.dumps(p.get("idr_ranges")), json.dumps(p.get("fold_ranges")),
         json.dumps(p.get("domains")), p.get("condensates"), p.get("condensate_types"),
         p.get("condensate_confidence"), p.get("condensate_forming"), p.get("fcr"), p.get("ncpr"),
@@ -56,7 +45,7 @@ def ingest_proteins():
  
     execute_values(cur, """
         INSERT INTO proteins (
-            uniprot, gene, ensg, dominant, isoform_number, isoform_label, isoform_count, length,
+            uniprot, gene, ensg, dominant, isoform_number, isoform_label, isoform_count, catalog_source, length,
             idr_count, idr_total_size, fold_total_size, disorder_fraction, idr_ranges, fold_ranges, domains,
             condensates, condensate_types, condensate_confidence, condensate_forming,
             fcr, ncpr, kappa, mean_hydropathy, isoelectric_point, molecular_weight,
@@ -65,7 +54,8 @@ def ingest_proteins():
         ON CONFLICT (uniprot) DO UPDATE SET
             gene=EXCLUDED.gene, ensg=EXCLUDED.ensg, dominant=EXCLUDED.dominant,
             isoform_number=EXCLUDED.isoform_number, isoform_label=EXCLUDED.isoform_label,
-            isoform_count=EXCLUDED.isoform_count, length=EXCLUDED.length, idr_count=EXCLUDED.idr_count,
+            isoform_count=EXCLUDED.isoform_count, catalog_source=EXCLUDED.catalog_source,
+            length=EXCLUDED.length, idr_count=EXCLUDED.idr_count,
             idr_total_size=EXCLUDED.idr_total_size, fold_total_size=EXCLUDED.fold_total_size,
             disorder_fraction=EXCLUDED.disorder_fraction,
             idr_ranges=EXCLUDED.idr_ranges, fold_ranges=EXCLUDED.fold_ranges, domains=EXCLUDED.domains,
@@ -78,16 +68,18 @@ def ingest_proteins():
             disease_count=EXCLUDED.disease_count, variant_stats=EXCLUDED.variant_stats,
             updated_at=now()
     """, rows, page_size=1000)
-    conn.commit()
+    protein_ids = [p["uniprot"] for p in proteins]
+    cur.execute("DELETE FROM proteins WHERE NOT (uniprot = ANY(%s))", (protein_ids,))
+    removed = cur.rowcount
     print(f"Ingested {len(rows)} proteins.")
+    print(f"Removed {removed} proteins absent from the authoritative catalog.")
 
 
-def ingest_protein_isoforms():
+def ingest_protein_isoforms(cur):
     """Load nested expanded-dataset isoform metadata from protein detail files."""
     details_dir = "protein_details"
     if not os.path.isdir(details_dir):
-        print("No protein_details/ directory found -- skipping protein isoform ingestion.")
-        return
+        raise FileNotFoundError("protein_details/ is required for authoritative ingestion")
 
     cur.execute("SELECT uniprot FROM proteins")
     known_proteins = {row[0] for row in cur.fetchall()}
@@ -116,11 +108,10 @@ def ingest_protein_isoforms():
                 sequence_source, identifiers, expanded_annotations
             ) VALUES %s
         """, rows, page_size=1000)
-    conn.commit()
     print(f"Ingested {len(rows)} protein isoforms.")
  
  
-def ingest_diseases():
+def ingest_diseases(cur):
     diseases = json.load(open("diseases.json"))
     cur.execute("DELETE FROM diseases")  # full refresh -- diseases has no natural unique key to upsert on
     rows = [
@@ -133,15 +124,13 @@ def ingest_diseases():
     execute_values(cur, """
         INSERT INTO diseases (uniprot, disease_id, score, evidence_count, datatypes) VALUES %s
     """, rows, page_size=1000)
-    conn.commit()
     print(f"Ingested {len(rows)} disease associations across {len(diseases)} proteins.")
  
  
-def ingest_variants():
+def ingest_variants(cur):
     mutations_dir = "mutations"
     if not os.path.isdir(mutations_dir):
-        print("No mutations/ directory found -- skipping variant ingestion.")
-        return
+        raise FileNotFoundError("mutations/ is required for authoritative ingestion")
     cur.execute("SELECT uniprot FROM proteins")
     known_proteins = {row[0] for row in cur.fetchall()}
  
@@ -185,22 +174,20 @@ def ingest_variants():
                 primary_classification, primary_condition, all_classifications, n_collapsed_rows
             ) VALUES %s
         """, rows, page_size=1000)
-    conn.commit()
     print(f"Ingested {len(rows)} variants.")
     if skipped_proteins:
         print(f"Skipped {len(skipped_proteins)} protein(s) in mutations/ with no matching row in proteins table "
               f"(ingest_proteins() must run first, or these are stale/orphaned entries): {skipped_proteins}")
  
  
-def ingest_protein_detail_tables():
+def ingest_protein_detail_tables(cur):
     """Populates condensate_details, ppi_partners, idr_segments, go_terms
     from protein_details/*.json -- the data that used to only exist in
     lazy-loaded per-protein files, now queryable/filterable across all
     proteins at once."""
     details_dir = "protein_details"
     if not os.path.isdir(details_dir):
-        print("No protein_details/ directory found -- skipping detail table ingestion.")
-        return
+        raise FileNotFoundError("protein_details/ is required for authoritative ingestion")
  
     cur.execute("SELECT uniprot FROM proteins")
     known_proteins = {row[0] for row in cur.fetchall()}
@@ -277,19 +264,16 @@ def ingest_protein_detail_tables():
         execute_values(cur, """
             INSERT INTO go_terms (uniprot, aspect, go_id, description, evidence) VALUES %s
         """, go_rows, page_size=1000)
-    conn.commit()
- 
     print(f"Ingested {len(condensate_rows)} condensate_details, {len(ppi_rows)} ppi_partners, "
           f"{len(idr_rows)} idr_segments, {len(go_rows)} go_terms rows.")
     if skipped:
         print(f"Skipped {len(skipped)} protein(s) in protein_details/ with no matching row in proteins table: {skipped}")
  
  
-def ingest_tissue_expression():
+def ingest_tissue_expression(cur):
     tissues_dir = "tissues"
     if not os.path.isdir(tissues_dir):
-        print("No tissues/ directory found -- skipping tissue expression ingestion.")
-        return
+        raise FileNotFoundError("tissues/ is required for authoritative ingestion")
  
     cur.execute("SELECT uniprot FROM proteins")
     known_proteins = {row[0] for row in cur.fetchall()}
@@ -319,20 +303,33 @@ def ingest_tissue_expression():
                 rna_value, rna_zscore, rna_level, protein_reliability, protein_level, protein_cell_types
             ) VALUES %s
         """, rows, page_size=1000)
-    conn.commit()
     print(f"Ingested {len(rows)} tissue_expression rows.")
     if skipped:
         print(f"Skipped {len(skipped)} protein(s) in tissues/ with no matching row in proteins table: {skipped}")
  
  
-if __name__ == "__main__":
-    ingest_proteins()
-    ingest_protein_isoforms()
-    ingest_diseases()
-    ingest_variants()
-    ingest_protein_detail_tables()
-    ingest_tissue_expression()
-    cur.close()
-    conn.close()
+def main():
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        print("ERROR: DATABASE_URL environment variable not set.")
+        print("Either put it in .env or export DATABASE_URL before ingestion.")
+        return 1
+
+    # One transaction gives readers either the complete old catalog or the
+    # complete new catalog. The advisory lock prevents concurrent publishers.
+    with psycopg2.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('kappel_catalog_ingestion'))")
+            ingest_proteins(cur)
+            ingest_protein_isoforms(cur)
+            ingest_diseases(cur)
+            ingest_variants(cur)
+            ingest_protein_detail_tables(cur)
+            ingest_tissue_expression(cur)
     print("\nDone. Note: R2 bulk-file upload was intentionally skipped this run (on hold) --")
     print("r2_details_key remains NULL for all proteins until that work resumes.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

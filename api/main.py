@@ -82,6 +82,7 @@ class ProteinSummary(BaseModel):
     isoform_number: Optional[int]
     isoform_label: Optional[str]
     isoform_count: Optional[int]
+    catalog_source: str
     length: Optional[int]
     condensate_forming: Optional[bool]
     condensates: Optional[List[str]]
@@ -159,7 +160,7 @@ def list_proteins(
     max_tissue_rna: Optional[float] = Query(None),
     sort: str = Query("gene", description="gene, disease_count, ppi_partner_count, length, or any NUMERIC_FIELDS entry"),
     order: str = Query("asc"),
-    limit: int = Query(25, ge=1, le=200),
+    limit: int = Query(25, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
     """

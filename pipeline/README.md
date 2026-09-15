@@ -63,7 +63,11 @@ length-based dominant selection remains the fallback.
 For PostgreSQL ingestion, run:
 
 ```bash
+psql "$DATABASE_URL" -f migrations/001_combined_catalog.sql
 python pipeline/ingest_to_postgres.py
 ```
 
-from the repository root after setting `DATABASE_URL`.
+from the repository root after setting `DATABASE_URL`. The migration is
+idempotent. Ingestion is an authoritative, single-transaction refresh: it
+removes proteins absent from the generated catalog, replaces all dependent
+table contents, and rolls back the entire refresh if any stage fails.

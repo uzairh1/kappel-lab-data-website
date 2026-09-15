@@ -21,7 +21,10 @@ CREATE TABLE proteins (
     dominant        BOOLEAN,
     isoform_number  INTEGER,
     isoform_label   TEXT,
-    isoform_count   INTEGER,
+    isoform_count   INTEGER NOT NULL DEFAULT 0,
+    catalog_source  TEXT NOT NULL CHECK (
+        catalog_source IN ('legacy_snapshot', 'expanded_dataset')
+    ),
     length          INTEGER,
 
     -- IDR / domain summary (from data.json)
