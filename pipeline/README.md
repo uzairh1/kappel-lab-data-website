@@ -6,9 +6,11 @@ Run from the repository root:
 python -m pipeline.build
 ```
 
-The core pipeline reads `Mini_Dataset.csv` and
-`per_protein_variant_stats_v2.csv` and writes the existing website data
-products in place.
+The core pipeline reads `Mini_Dataset.csv` and writes the existing website
+data products in place. The old Variants & RBP panel values are retained in
+the checked-in `pipeline/legacy_variant_stats.json` lookup; the original
+`per_protein_variant_stats.csv` / `per_protein_variant_stats_v2.csv` export is
+not a build input and can be absent.
 
 ## Mutation viewer data
 

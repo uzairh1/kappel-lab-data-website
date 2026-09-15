@@ -6,7 +6,7 @@ from pathlib import Path
 class PipelinePaths:
     root: Path
     mini_dataset: Path
-    variant_stats: Path
+    legacy_variant_stats: Path
     data_json: Path
     diseases_json: Path
     protein_details: Path
@@ -21,7 +21,7 @@ def default_paths(root: Path | None = None) -> PipelinePaths:
     return PipelinePaths(
         root=root,
         mini_dataset=root / "Mini_Dataset.csv",
-        variant_stats=root / "per_protein_variant_stats_v2.csv",
+        legacy_variant_stats=root / "pipeline" / "legacy_variant_stats.json",
         data_json=root / "data.json",
         diseases_json=root / "diseases.json",
         protein_details=root / "protein_details",

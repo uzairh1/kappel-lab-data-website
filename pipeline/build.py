@@ -9,7 +9,7 @@ from pipeline.steps.canonical import build_canonical_records
 from pipeline.steps.details import write_details
 from pipeline.steps.mutations import MutationBuildError, rebuild_mutations
 from pipeline.steps.proteins import write_outputs
-from pipeline.steps.variants import build_variant_stats_map
+from pipeline.steps.variants import load_legacy_variant_stats
 from pipeline.steps.tissues import write_tissues
 
 
@@ -23,14 +23,11 @@ def build(
     root: Path,
     *,
     validate_outputs: bool = True,
-    run_variant_stats: bool = True,
     mutation_prefiltered: Path | None = None,
     mutation_filtered: Path | None = None,
 ):
     paths = default_paths(root)
-    required = [paths.mini_dataset]
-    if run_variant_stats:
-        required.append(paths.variant_stats)
+    required = [paths.mini_dataset, paths.legacy_variant_stats]
     missing = [path for path in required if not path.exists()]
     if missing:
         print("Cannot build: required source file(s) are missing:")
@@ -46,7 +43,7 @@ def build(
 
     print("[1/5] Loading source data")
     df = pd.read_csv(paths.mini_dataset)
-    variant_map = build_variant_stats_map(paths.variant_stats) if run_variant_stats else {}
+    variant_map = load_legacy_variant_stats(paths.legacy_variant_stats)
     print("[2/5] Building canonical protein records")
     records, skipped = build_canonical_records(df, variant_stats_map=variant_map)
     print(f"  proteins: {len(records)}; skipped rows: {len(skipped)}")
@@ -61,7 +58,7 @@ def build(
     write_details(records, paths.protein_details)
     write_tissues(records, paths.tissues)
 
-    print("[4/5] Reporting supplemental variant statistics")
+    print("[4/5] Reporting legacy Variants & RBP coverage")
     matched = sum(record.variant_stats is not None for record in records)
     unmatched = len(records) - matched
     print(f"  matched: {matched} / {len(records)}")
@@ -131,7 +128,6 @@ def main():
     parser = argparse.ArgumentParser(description="Build the Kappel Lab website data products.")
     parser.add_argument("--root", type=Path, default=None, help="Repository root (default: auto-detected).")
     parser.add_argument("--no-validate", action="store_true", help="Skip core output validation.")
-    parser.add_argument("--no-variant-stats", action="store_true", help="Skip supplemental variant-stat enrichment.")
 
     mutation_group = parser.add_mutually_exclusive_group()
     mutation_group.add_argument(
@@ -161,7 +157,6 @@ def main():
     code = build(
         root,
         validate_outputs=not args.no_validate,
-        run_variant_stats=not args.no_variant_stats,
         mutation_prefiltered=args.mutations,
         mutation_filtered=args.mutations_filtered,
     )
