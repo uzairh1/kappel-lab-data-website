@@ -9,8 +9,9 @@ from pipeline.steps.canonical import build_canonical_records
 from pipeline.steps.details import write_details
 from pipeline.steps.mutations import MutationBuildError, rebuild_mutations
 from pipeline.steps.proteins import write_outputs
-from pipeline.steps.variants import load_legacy_variant_stats
+from pipeline.steps.variants import load_legacy_gene_annotations, load_legacy_variant_stats
 from pipeline.steps.tissues import write_tissues
+from pipeline.validation.checks import validate_source
 
 
 def _resolve_input(root: Path, path: Path | None) -> Path | None:
@@ -22,12 +23,17 @@ def _resolve_input(root: Path, path: Path | None) -> Path | None:
 def build(
     root: Path,
     *,
+    dataset: Path | None = None,
     validate_outputs: bool = True,
     mutation_prefiltered: Path | None = None,
     mutation_filtered: Path | None = None,
 ):
-    paths = default_paths(root)
-    required = [paths.mini_dataset, paths.legacy_variant_stats]
+    paths = default_paths(root, dataset=dataset)
+    required = [
+        paths.expanded_dataset,
+        paths.legacy_variant_stats,
+        paths.legacy_gene_annotations,
+    ]
     missing = [path for path in required if not path.exists()]
     if missing:
         print("Cannot build: required source file(s) are missing:")
@@ -42,16 +48,32 @@ def build(
         return 2
 
     print("[1/5] Loading source data")
-    df = pd.read_csv(paths.mini_dataset)
+    df = pd.read_csv(paths.expanded_dataset)
     variant_map = load_legacy_variant_stats(paths.legacy_variant_stats)
+    legacy_gene_annotations = load_legacy_gene_annotations(paths.legacy_gene_annotations)
+    source_errors, source_warnings = validate_source(df)
+    if source_errors:
+        print("Source validation FAILED; no outputs were written.")
+        for message in source_errors:
+            print(f"  ERROR: {message}")
+        return 1
+    for message in source_warnings:
+        print(f"  WARNING: {message}")
+
     print("[2/5] Building canonical protein records")
-    records, skipped = build_canonical_records(df, variant_stats_map=variant_map)
-    print(f"  proteins: {len(records)}; skipped rows: {len(skipped)}")
+    records, skipped = build_canonical_records(
+        df,
+        variant_stats_map=variant_map,
+        legacy_gene_annotations=legacy_gene_annotations,
+    )
+    print(f"  proteins: {len(records)}; failed groups: {len(skipped)}")
     if skipped:
         for item in skipped[:10]:
-            print(f"  SKIPPED row {item['row']}: {item['error']}")
+            print(f"  ERROR {item['uniprot']} rows {item['rows']}: {item['error']}")
         if len(skipped) > 10:
             print(f"  ... and {len(skipped) - 10} more")
+        print("Canonical build FAILED; no outputs were written.")
+        return 1
 
     print("[3/5] Writing website JSON products")
     write_outputs(records, paths.data_json, paths.diseases_json)
@@ -68,7 +90,7 @@ def build(
     if validate_outputs:
         from pipeline.validation.validate import run as validate_run
 
-        code = validate_run(paths, source_df=df)
+        code = validate_run(paths)
         if code:
             return code
     else:
@@ -121,12 +143,18 @@ def build(
             print(f"  WARNING: {warning}")
 
     print("\nBuild complete. PostgreSQL ingestion remains a separate publishing step.")
-    return 0 if not skipped else 1
+    return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description="Build the Kappel Lab website data products.")
     parser.add_argument("--root", type=Path, default=None, help="Repository root (default: auto-detected).")
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=None,
+        help="Expanded RBP dataset (default: <root>/RBP_Dataset.csv).",
+    )
     parser.add_argument("--no-validate", action="store_true", help="Skip core output validation.")
 
     mutation_group = parser.add_mutually_exclusive_group()
@@ -156,6 +184,7 @@ def main():
     root = args.root or default_paths().root
     code = build(
         root,
+        dataset=args.dataset,
         validate_outputs=not args.no_validate,
         mutation_prefiltered=args.mutations,
         mutation_filtered=args.mutations_filtered,

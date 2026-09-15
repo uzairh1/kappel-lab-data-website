@@ -5,8 +5,9 @@ from pathlib import Path
 @dataclass(frozen=True)
 class PipelinePaths:
     root: Path
-    mini_dataset: Path
+    expanded_dataset: Path
     legacy_variant_stats: Path
+    legacy_gene_annotations: Path
     data_json: Path
     diseases_json: Path
     protein_details: Path
@@ -16,12 +17,16 @@ class PipelinePaths:
     variant_positions_filtered: Path
 
 
-def default_paths(root: Path | None = None) -> PipelinePaths:
+def default_paths(root: Path | None = None, dataset: Path | None = None) -> PipelinePaths:
     root = Path(root or Path(__file__).resolve().parents[1])
+    dataset = Path(dataset or "RBP_Dataset.csv")
+    if not dataset.is_absolute():
+        dataset = root / dataset
     return PipelinePaths(
         root=root,
-        mini_dataset=root / "Mini_Dataset.csv",
+        expanded_dataset=dataset,
         legacy_variant_stats=root / "pipeline" / "legacy_variant_stats.json",
+        legacy_gene_annotations=root / "pipeline" / "legacy_gene_annotations.json",
         data_json=root / "data.json",
         diseases_json=root / "diseases.json",
         protein_details=root / "protein_details",

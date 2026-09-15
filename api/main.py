@@ -81,6 +81,7 @@ class ProteinSummary(BaseModel):
     dominant: Optional[bool]
     isoform_number: Optional[int]
     isoform_label: Optional[str]
+    isoform_count: Optional[int]
     length: Optional[int]
     condensate_forming: Optional[bool]
     condensates: Optional[List[str]]
@@ -337,6 +338,27 @@ def get_protein_diseases(
     return {"count": total, "limit": limit, "offset": offset, "results": rows}
 
 
+@app.get("/api/proteins/{uniprot}/isoforms", tags=["proteins"])
+def get_protein_isoforms(uniprot: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT dataset_isoform_id, uniprot, dominant, row_kind, length,
+               sequence_sha256, sequence_source, identifiers, expanded_annotations
+        FROM protein_isoforms
+        WHERE uniprot = %s
+        ORDER BY dominant DESC, dataset_isoform_id
+        """,
+        (uniprot.upper(),),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    if not rows:
+        raise HTTPException(404, f"No isoforms found for UniProt ID '{uniprot}'")
+    return rows
+
+
 @app.get("/api/proteins/{uniprot}/ppi", tags=["interactions"])
 def get_protein_ppi(uniprot: str, limit: int = Query(50, ge=1, le=1000)):
     conn = get_conn()
@@ -364,5 +386,6 @@ def root():
         "name": "Kappel Lab Data Website API",
         "docs": "/docs",
         "endpoints": ["/api/stats", "/api/condensates", "/api/proteins", "/api/proteins/{uniprot}",
-                      "/api/proteins/{uniprot}/diseases", "/api/proteins/{uniprot}/ppi", "/api/proteins/{uniprot}/idr-segments"],
+                      "/api/proteins/{uniprot}/isoforms", "/api/proteins/{uniprot}/diseases",
+                      "/api/proteins/{uniprot}/ppi", "/api/proteins/{uniprot}/idr-segments"],
     }

@@ -153,12 +153,33 @@ def parse_protein_position(value: Any) -> tuple[int | None, int | None]:
 
 
 def _known_proteins(records: Iterable[Any]) -> dict[str, int | None]:
-    """Return UniProt -> known Mini Dataset length from canonical records."""
+    """Return UniProt -> expanded-dataset canonical length."""
     known = {}
     for record in records:
         value = record.summary.get("length")
         known[record.uniprot] = safe_int(value)
     return known
+
+
+def _expanded_isoform_links(records: Iterable[Any]) -> dict[str, dict[str, dict[str, Any]]]:
+    """Return unambiguous RefSeq protein -> expanded isoform metadata links."""
+    result = {}
+    for record in records:
+        candidates: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for isoform in getattr(record, "isoforms", []):
+            identifiers = isoform.get("expanded_annotations", {}).get("identifiers", {})
+            for refseq_id in identifiers.get("refseq_protein_ids") or []:
+                candidates[str(refseq_id)].append({
+                    "dataset_isoform_id": isoform.get("dataset_isoform_id"),
+                    "dominant": isoform.get("dominant") is True,
+                    "length": isoform.get("length"),
+                })
+        result[record.uniprot] = {
+            refseq_id: matches[0]
+            for refseq_id, matches in candidates.items()
+            if len(matches) == 1
+        }
+    return result
 
 
 def filter_prefiltered_variants(
@@ -290,7 +311,9 @@ def generate_mutation_tree(
     if not filtered_csv.exists():
         raise MutationBuildError(f"Filtered mutation source does not exist: {filtered_csv}")
 
+    records = list(records)
     known = _known_proteins(records)
+    expanded_links = _expanded_isoform_links(records)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_csv(filtered_csv, low_memory=False)
@@ -323,6 +346,7 @@ def generate_mutation_tree(
             iso_id = str(iso_id)
             length = safe_int(row.get("isoform_length"))
             label = _json_scalar(row.get("GeneIsoformWithDescription"))
+            expanded_match = expanded_links.get(uniprot, {}).get(iso_id)
             isoforms[iso_id] = {
                 "id": iso_id,
                 "label": label or iso_id,
@@ -331,14 +355,31 @@ def generate_mutation_tree(
                 "isoform_length_mismatch": None,
                 "our_known_length": known[uniprot],
                 "dominant_source": None,
+                "dataset_isoform_id": (
+                    expanded_match.get("dataset_isoform_id") if expanded_match else None
+                ),
             }
 
         our_length = known[uniprot]
-        exact_matches = [
-            item for item in isoforms.values()
-            if our_length is not None and item["length"] == our_length
+        linked_dominant_ids = {
+            refseq_id
+            for refseq_id, match in expanded_links.get(uniprot, {}).items()
+            if match.get("dominant") is True
+        }
+        linked_dominants = [
+            item for iso_id, item in isoforms.items() if iso_id in linked_dominant_ids
         ]
-        if exact_matches:
+        exact_matches = [item for item in isoforms.values() if item["length"] == our_length]
+        if len(linked_dominants) == 1:
+            chosen = linked_dominants[0]
+            chosen["dominant"] = True
+            chosen["dominant_source"] = "expanded_dataset_refseq_match"
+            if chosen["length"] == our_length:
+                dominant_exact += 1
+            else:
+                chosen["isoform_length_mismatch"] = True
+                dominant_inferred += 1
+        elif exact_matches:
             chosen = exact_matches[0]
             chosen["dominant"] = True
             chosen["dominant_source"] = "exact_length_match"

@@ -45,7 +45,7 @@ def ingest_proteins():
     proteins = json.load(open("data.json"))
     rows = [(
         p["uniprot"], p["gene"], p.get("ensg"), p.get("dominant"), p.get("isoform_number"),
-        p.get("isoform_label"), p.get("length"), p.get("idr_count"), p.get("idr_total_size"),
+        p.get("isoform_label"), p.get("isoform_count"), p.get("length"), p.get("idr_count"), p.get("idr_total_size"),
         p.get("fold_total_size"), p.get("disorder_fraction"), json.dumps(p.get("idr_ranges")), json.dumps(p.get("fold_ranges")),
         json.dumps(p.get("domains")), p.get("condensates"), p.get("condensate_types"),
         p.get("condensate_confidence"), p.get("condensate_forming"), p.get("fcr"), p.get("ncpr"),
@@ -56,7 +56,7 @@ def ingest_proteins():
  
     execute_values(cur, """
         INSERT INTO proteins (
-            uniprot, gene, ensg, dominant, isoform_number, isoform_label, length,
+            uniprot, gene, ensg, dominant, isoform_number, isoform_label, isoform_count, length,
             idr_count, idr_total_size, fold_total_size, disorder_fraction, idr_ranges, fold_ranges, domains,
             condensates, condensate_types, condensate_confidence, condensate_forming,
             fcr, ncpr, kappa, mean_hydropathy, isoelectric_point, molecular_weight,
@@ -65,7 +65,7 @@ def ingest_proteins():
         ON CONFLICT (uniprot) DO UPDATE SET
             gene=EXCLUDED.gene, ensg=EXCLUDED.ensg, dominant=EXCLUDED.dominant,
             isoform_number=EXCLUDED.isoform_number, isoform_label=EXCLUDED.isoform_label,
-            length=EXCLUDED.length, idr_count=EXCLUDED.idr_count,
+            isoform_count=EXCLUDED.isoform_count, length=EXCLUDED.length, idr_count=EXCLUDED.idr_count,
             idr_total_size=EXCLUDED.idr_total_size, fold_total_size=EXCLUDED.fold_total_size,
             disorder_fraction=EXCLUDED.disorder_fraction,
             idr_ranges=EXCLUDED.idr_ranges, fold_ranges=EXCLUDED.fold_ranges, domains=EXCLUDED.domains,
@@ -80,6 +80,44 @@ def ingest_proteins():
     """, rows, page_size=1000)
     conn.commit()
     print(f"Ingested {len(rows)} proteins.")
+
+
+def ingest_protein_isoforms():
+    """Load nested expanded-dataset isoform metadata from protein detail files."""
+    details_dir = "protein_details"
+    if not os.path.isdir(details_dir):
+        print("No protein_details/ directory found -- skipping protein isoform ingestion.")
+        return
+
+    cur.execute("SELECT uniprot FROM proteins")
+    known_proteins = {row[0] for row in cur.fetchall()}
+    cur.execute("DELETE FROM protein_isoforms")
+    rows = []
+    for fname in os.listdir(details_dir):
+        if not fname.endswith(".json"):
+            continue
+        uniprot = fname[:-5]
+        if uniprot not in known_proteins:
+            continue
+        detail = json.load(open(os.path.join(details_dir, fname)))
+        for isoform in detail.get("isoforms", []):
+            annotations = isoform.get("expanded_annotations") or {}
+            rows.append((
+                isoform["dataset_isoform_id"], uniprot, isoform.get("dominant", False),
+                isoform.get("row_kind"), isoform.get("length"), isoform.get("sequence_sha256"),
+                isoform.get("sequence_source"), json.dumps(annotations.get("identifiers") or {}),
+                json.dumps(annotations),
+            ))
+
+    if rows:
+        execute_values(cur, """
+            INSERT INTO protein_isoforms (
+                dataset_isoform_id, uniprot, dominant, row_kind, length, sequence_sha256,
+                sequence_source, identifiers, expanded_annotations
+            ) VALUES %s
+        """, rows, page_size=1000)
+    conn.commit()
+    print(f"Ingested {len(rows)} protein isoforms.")
  
  
 def ingest_diseases():
@@ -289,6 +327,7 @@ def ingest_tissue_expression():
  
 if __name__ == "__main__":
     ingest_proteins()
+    ingest_protein_isoforms()
     ingest_diseases()
     ingest_variants()
     ingest_protein_detail_tables()

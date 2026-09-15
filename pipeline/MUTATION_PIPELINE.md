@@ -57,7 +57,8 @@ validation. This prevents both historical rerun hazards:
   cannot survive a successful rebuild.
 
 The mutation stage uses the canonical proteins already built from
-`Mini_Dataset.csv` for the target UniProt set and known protein lengths. It no
+the expanded `RBP_Dataset.csv` for the target UniProt set, known protein
+lengths, and RefSeq-to-dataset-isoform links. It no
 longer reopens `data.json` as an input dependency.
 
 ## What the viewer fields mean

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from pipeline.steps.mutations import (
+    _expanded_isoform_links,
     filter_prefiltered_variants,
     rebuild_mutations,
     validate_mutation_tree,
@@ -93,6 +94,24 @@ class MutationPipelineTests(unittest.TestCase):
             rebuild_mutations([self.record()], output_dir=output, prefiltered_csv=source)
             self.assertFalse((output / "STALE").exists())
             self.assertTrue((output / "PTEST1" / "index.json").exists())
+
+    def test_expanded_isoform_refseq_link(self):
+        record = self.record()
+        record.isoforms = [{
+            "dataset_isoform_id": "PTEST1-1",
+            "dominant": True,
+            "length": 100,
+            "expanded_annotations": {
+                "identifiers": {"refseq_protein_ids": ["NP_TEST.1"]},
+            },
+        }]
+
+        links = _expanded_isoform_links([record])
+
+        self.assertEqual(
+            links["PTEST1"]["NP_TEST.1"]["dataset_isoform_id"],
+            "PTEST1-1",
+        )
 
 
 if __name__ == "__main__":

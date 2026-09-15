@@ -1,6 +1,6 @@
-"""Explicit registry for structured Mini_Dataset column families.
+"""Explicit registry for structured expanded-dataset column families.
 
-The website source CSV stores several logical objects across parallel columns.
+The expanded RBP source CSV stores several logical objects across parallel columns.
 This module is the one place that defines how those columns map into canonical
 objects. Fields must be registered here; similarly prefixed source columns are
 intentionally ignored.

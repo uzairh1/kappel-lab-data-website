@@ -1,4 +1,4 @@
-"""Structured transformations from Mini_Dataset source rows.
+"""Structured transformations from expanded RBP dataset rows.
 
 These builders turn the CSV's encoded complex fields into named canonical
 objects. Output writers should consume these objects rather than re-parsing
@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from .common import avg_list, parse_dict, parse_numpyish, parse_ot_field, parse_pylist
+from .common import avg_list, parse_dict, parse_jsonish, parse_pylist
 from pipeline.field_families import CONDENSATE_FIELDS, domain_fields, idr_fields
 
 
@@ -57,7 +57,9 @@ def region_biophysics(row, prefix: str) -> dict[str, Any]:
     def get(name: str):
         column = f"{prefix}{name}" if prefix else name
         value = row.get(column)
-        return None if pd.isna(value) else value
+        if pd.isna(value):
+            return None
+        return value.item() if hasattr(value, "item") else value
 
     return {
         "fcr": get("FCR"), "ncpr": get("NCPR"), "kappa": get("kappa"),
@@ -164,36 +166,44 @@ def build_condensate_details(row, condensate_names: list[Any]) -> list[dict[str,
     ]
 
 
-def build_gene_annotation(row, ensg: str) -> dict[str, Any]:
-    homologues = parse_ot_field(row["homologues"], ensg) or []
-    tractability = parse_ot_field(row["tractability"], ensg) or []
+def build_gene_annotation(row, legacy: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Preserve frozen legacy annotations, with a minimal expanded-data fallback."""
+    if legacy is not None:
+        return legacy
+
+    synonyms = parse_jsonish(row.get("gene_synonyms")) or []
+    transcript_ids = parse_jsonish(row.get("ensembl_transcript_ids")) or []
+    protein_ids = parse_jsonish(row.get("ensembl_protein_ids")) or []
+    description = row.get("gene_description")
+    if pd.isna(description):
+        description = None
     return {
-        "approved_name": parse_ot_field(row["approvedName"], ensg),
-        "biotype": parse_ot_field(row["biotype"], ensg),
-        "id_list": parse_pylist(row["ID_list"]),
-        "transcript_ids": parse_ot_field(row["transcriptIds"], ensg) or [],
-        "canonical_transcript": parse_ot_field(row["canonicalTranscript"], ensg),
-        "canonical_exons": parse_ot_field(row["canonicalExons"], ensg) or [],
-        "genomic_location": parse_ot_field(row["genomicLocation"], ensg),
-        "synonyms": parse_ot_field(row["synonyms"], ensg) or [],
-        "symbol_synonyms": parse_ot_field(row["symbolSynonyms"], ensg) or [],
-        "name_synonyms": parse_ot_field(row["nameSynonyms"], ensg) or [],
-        "function_descriptions": parse_ot_field(row["functionDescriptions"], ensg) or [],
-        "subcellular_locations": parse_ot_field(row["subcellularLocations"], ensg) or [],
-        "obsolete_symbols": parse_ot_field(row["obsoleteSymbols"], ensg) or [],
-        "obsolete_names": parse_ot_field(row["obsoleteNames"], ensg) or [],
-        "protein_ids": parse_ot_field(row["proteinIds"], ensg) or [],
-        "db_xrefs": parse_ot_field(row["dbXrefs"], ensg) or [],
-        "pathways": parse_ot_field(row["pathways"], ensg) or [],
-        "tss": parse_ot_field(row["tss"], ensg),
-        "target_class": parse_ot_field(row["targetClass"], ensg),
-        "hallmarks": parse_ot_field(row["hallmarks"], ensg),
-        "tep": parse_ot_field(row["tep"], ensg),
-        "chemical_probes": parse_ot_field(row["chemicalProbes"], ensg),
-        "safety_liabilities": parse_ot_field(row["safetyLiabilities"], ensg),
-        "alternative_genes": parse_ot_field(row["alternativeGenes"], ensg),
-        "constraint": parse_ot_field(row["constraint"], ensg) or [],
-        "homologue_count": len(homologues),
-        "homologues_sample": homologues[:15],
-        "tractability_summary": [t for t in tractability if isinstance(t, dict) and t.get("value") is True],
+        "approved_name": description,
+        "biotype": None,
+        "id_list": parse_pylist(row.get("ID_list")),
+        "transcript_ids": transcript_ids,
+        "canonical_transcript": {"id": row.get("ENST")} if isinstance(row.get("ENST"), str) else None,
+        "canonical_exons": [],
+        "genomic_location": None,
+        "synonyms": [{"label": value} for value in synonyms],
+        "symbol_synonyms": synonyms,
+        "name_synonyms": [],
+        "function_descriptions": [description] if description else [],
+        "subcellular_locations": [],
+        "obsolete_symbols": [],
+        "obsolete_names": [],
+        "protein_ids": protein_ids,
+        "db_xrefs": [],
+        "pathways": [],
+        "tss": None,
+        "target_class": None,
+        "hallmarks": None,
+        "tep": None,
+        "chemical_probes": None,
+        "safety_liabilities": None,
+        "alternative_genes": None,
+        "constraint": [],
+        "homologue_count": 0,
+        "homologues_sample": [],
+        "tractability_summary": [],
     }

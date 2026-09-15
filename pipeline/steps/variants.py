@@ -9,3 +9,11 @@ def load_legacy_variant_stats(lookup_json: Path) -> dict[str, dict]:
     if not isinstance(values, dict):
         raise ValueError(f"Legacy variant lookup must be a JSON object: {lookup_json}")
     return values
+
+
+def load_legacy_gene_annotations(lookup_json: Path) -> dict[str, dict]:
+    """Read the frozen gene annotations retained from the original dataset."""
+    values = json.loads(lookup_json.read_text(encoding="utf-8"))
+    if not isinstance(values, dict):
+        raise ValueError(f"Legacy gene annotation lookup must be a JSON object: {lookup_json}")
+    return values

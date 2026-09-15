@@ -1,4 +1,4 @@
-"""Canonical region builders for structured Mini_Dataset fields."""
+"""Canonical region builders for structured expanded-dataset fields."""
 import ast
 from typing import Any
 
@@ -26,7 +26,7 @@ IDR_METRICS = {
 
 
 def parse_list_field(value: Any) -> list:
-    """Parse a Mini_Dataset cell that stores a Python-list string."""
+    """Parse an expanded-dataset cell that stores a Python-list string."""
     if not isinstance(value, str) or not value.strip() or value.strip() == "[]":
         return []
     try:

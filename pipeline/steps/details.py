@@ -5,6 +5,10 @@ from pathlib import Path
 
 def write_details(records, details_dir: Path):
     details_dir.mkdir(exist_ok=True)
+    expected = {f"{record.uniprot}.json" for record in records}
+    for path in details_dir.glob("*.json"):
+        if path.name not in expected:
+            path.unlink()
     total_bytes = 0
     for record in records:
         text = json.dumps(record.details)

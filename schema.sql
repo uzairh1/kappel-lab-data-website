@@ -21,6 +21,7 @@ CREATE TABLE proteins (
     dominant        BOOLEAN,
     isoform_number  INTEGER,
     isoform_label   TEXT,
+    isoform_count   INTEGER,
     length          INTEGER,
 
     -- IDR / domain summary (from data.json)
@@ -65,6 +66,22 @@ CREATE INDEX idx_proteins_gene ON proteins (gene);
 CREATE INDEX idx_proteins_condensate_forming ON proteins (condensate_forming);
 CREATE INDEX idx_proteins_disease_count ON proteins (disease_count DESC);
 CREATE INDEX idx_proteins_condensates_gin ON proteins USING GIN (condensates);
+
+
+CREATE TABLE protein_isoforms (
+    dataset_isoform_id   TEXT PRIMARY KEY,
+    uniprot              TEXT NOT NULL REFERENCES proteins(uniprot) ON DELETE CASCADE,
+    dominant             BOOLEAN NOT NULL,
+    row_kind             TEXT NOT NULL,
+    length               INTEGER NOT NULL,
+    sequence_sha256      TEXT,
+    sequence_source      TEXT,
+    identifiers          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    expanded_annotations JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX idx_protein_isoforms_uniprot ON protein_isoforms (uniprot);
+CREATE INDEX idx_protein_isoforms_dominant ON protein_isoforms (uniprot, dominant);
 
 
 CREATE TABLE diseases (

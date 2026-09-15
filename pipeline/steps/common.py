@@ -1,4 +1,5 @@
 import ast
+import json
 import re
 from typing import Any
 
@@ -26,26 +27,22 @@ def parse_dict(value: Any):
         return {}
 
 
-def parse_numpyish(value: Any):
+def parse_jsonish(value: Any):
+    """Parse JSON or Python-literal collection cells without guessing scalars."""
     if not isinstance(value, str):
         return value
-    s = value.strip()
-    if s in ("", "nan", "None"):
+    stripped = value.strip()
+    if not stripped:
         return None
-    if not (s.startswith("[") or s.startswith("{")):
-        return s
-    fixed = re.sub(r"'\s+'", "', '", s)
-    fixed = re.sub(r"\}\s+\{", "}, {", fixed)
-    fixed = re.sub(r"\]\s+\[", "], [", fixed)
+    if not (stripped.startswith("[") or stripped.startswith("{")):
+        return value
     try:
-        return ast.literal_eval(fixed)
-    except Exception:
-        return None
-
-
-def parse_ot_field(raw_value: Any, ensg: str):
-    outer = parse_dict(raw_value) if isinstance(raw_value, str) else {}
-    return parse_numpyish(outer.get(ensg))
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        try:
+            return ast.literal_eval(stripped)
+        except (SyntaxError, ValueError):
+            return value
 
 
 def avg_list(values):
