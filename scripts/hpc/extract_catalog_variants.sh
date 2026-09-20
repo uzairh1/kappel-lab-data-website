@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
-  echo "Usage: $0 RAW_TANYA.csv uniprot_ids.txt variant_positions_prefiltered.csv" >&2
+  echo "Usage: $0 RAW_TANYA.csv mutation_target_uniprot_ids.txt tanya_catalog_variants.csv" >&2
   exit 2
 fi
 

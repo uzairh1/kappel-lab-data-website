@@ -9,10 +9,10 @@ def run(paths, source_df=None):
         errors.extend(source_errors)
         warnings.extend(source_warnings)
     output_errors, output_warnings = validate_outputs(
-        paths.data_json,
-        paths.diseases_json,
+        paths.protein_catalog,
+        paths.disease_associations,
         paths.protein_details,
-        paths.tissues,
+        paths.tissue_expression,
     )
     errors.extend(output_errors)
     warnings.extend(output_warnings)

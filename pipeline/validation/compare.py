@@ -9,10 +9,17 @@ def _json(path: Path):
 
 def compare_trees(expected_root: Path, actual_root: Path):
     expected = []
-    for rel in [Path("data.json"), Path("diseases.json")]:
+    for rel in [
+        Path("data/generated/protein_catalog.json"),
+        Path("data/generated/disease_associations.json"),
+    ]:
         if (expected_root / rel).exists():
             expected.append(rel)
-    for dirname in ("protein_details", "tissues", "mutations"):
+    for dirname in (
+        "data/generated/protein_details",
+        "data/generated/tissue_expression",
+        "data/generated/mutations",
+    ):
         base = expected_root / dirname
         if base.exists():
             expected.extend(sorted(p.relative_to(expected_root) for p in base.rglob("*.json")))

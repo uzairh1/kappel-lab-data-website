@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "archive": "legacy_catalog.tar.gz",
+  "archive": "protein_catalog_snapshot.tar.gz",
   "archive_sha256": "369f58b7921be9fe3b873abcdb79877d3d2c57aa84e9d6702143351a35986e9a",
   "uniprot_ids_sha256": "94c5ca282afdb84e979b552117636f182a0fba3ac9c97db1f5206e7020d747f4",
   "source": {

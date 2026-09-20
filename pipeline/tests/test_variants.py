@@ -13,11 +13,11 @@ class LegacyVariantStatsTests(unittest.TestCase):
 
         self.assertEqual(
             paths.expanded_dataset,
-            Path("repo/RBP_Dataset.csv"),
+            Path("repo/data/source/expanded_protein_annotations.csv"),
         )
         self.assertEqual(
             paths.legacy_variant_stats,
-            Path("repo/pipeline/legacy_variant_stats.json"),
+            Path("repo/pipeline/resources/legacy/variant_rbp_lookup.json"),
         )
 
     def test_loads_static_lookup(self):

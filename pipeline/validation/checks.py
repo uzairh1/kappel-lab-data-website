@@ -107,11 +107,16 @@ def validate_source(df):
     return errors, warnings
 
 
-def validate_outputs(data_json: Path, diseases_json: Path, protein_details: Path, tissues: Path):
+def validate_outputs(
+    protein_catalog: Path,
+    disease_associations: Path,
+    protein_details: Path,
+    tissue_expression: Path,
+):
     errors = []
     warnings = []
-    proteins = json.loads(data_json.read_text())
-    diseases = json.loads(diseases_json.read_text())
+    proteins = json.loads(protein_catalog.read_text())
+    diseases = json.loads(disease_associations.read_text())
 
     uniprots = [p.get("uniprot") for p in proteins]
     if len(uniprots) != len(set(uniprots)):
@@ -124,7 +129,7 @@ def validate_outputs(data_json: Path, diseases_json: Path, protein_details: Path
     if missing_details:
         errors.append(f"Missing protein detail files: {sorted(missing_details)}")
 
-    tissue_ids = {p.stem for p in tissues.glob("*.json")}
+    tissue_ids = {p.stem for p in tissue_expression.glob("*.json")}
     missing_tissues = set(uniprots) - tissue_ids
     if missing_tissues:
         warnings.append(f"Missing tissue files: {sorted(missing_tissues)}")

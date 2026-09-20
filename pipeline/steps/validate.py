@@ -5,7 +5,10 @@ from pipeline.validation.checks import validate_outputs
 
 def run(paths):
     errors, warnings = validate_outputs(
-        paths.data_json, paths.diseases_json, paths.protein_details, paths.tissues
+        paths.protein_catalog,
+        paths.disease_associations,
+        paths.protein_details,
+        paths.tissue_expression,
     )
     print(f"Validation: {len(errors)} error(s), {len(warnings)} warning(s)")
     for message in warnings:

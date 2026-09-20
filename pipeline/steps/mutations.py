@@ -6,8 +6,8 @@ source; the HPC/awk prefilter remains a separate refresh step.
 
 Normal inputs are either:
 
-* ``variant_positions_prefiltered.csv`` -- run the filter + transform stages.
-* ``variant_positions_filtered.csv`` -- skip directly to the transform stage.
+* ``tanya_catalog_variants.csv`` -- run the filter + transform stages.
+* ``website_mutation_records.csv`` -- skip directly to the transform stage.
 
 The public ``mutations/`` JSON layout is preserved exactly: one ``index.json``
 per protein plus one variant payload per isoform.
@@ -661,7 +661,7 @@ def rebuild_mutations(
         temp_root = Path(temp_name)
         filter_stats = None
         if prefiltered_csv is not None:
-            working_filtered = temp_root / "variant_positions_filtered.csv"
+            working_filtered = temp_root / "website_mutation_records.csv"
             filter_stats = filter_prefiltered_variants(
                 Path(prefiltered_csv), working_filtered, records
             )

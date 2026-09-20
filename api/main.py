@@ -11,7 +11,7 @@ Postgres migration exists to solve.
 R2 note (still fully separate, still on hold): this API serves METADATA
 from Postgres. The big per-protein detail/mutation files stay wherever
 they currently live (git/GitHub Pages for now) -- this file doesn't touch
-that at all. See ingest_to_postgres.py's docstring for the same note.
+that at all. See pipeline/ingest_postgres.py for the same note.
 
 Setup:
     export DATABASE_URL="postgresql://user:password@host:port/dbname"

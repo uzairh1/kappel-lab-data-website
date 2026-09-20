@@ -13,11 +13,18 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 def build_manifest(root: Path) -> dict:
     files = []
-    for rel in [Path('data.json'), Path('diseases.json')]:
+    for rel in [
+        Path("data/generated/protein_catalog.json"),
+        Path("data/generated/disease_associations.json"),
+    ]:
         p = root / rel
         if p.exists():
             files.append({'path': rel.as_posix(), 'sha256': sha256_file(p), 'bytes': p.stat().st_size})
-    for dirname in ('protein_details', 'tissues', 'mutations'):
+    for dirname in (
+        "data/generated/protein_details",
+        "data/generated/tissue_expression",
+        "data/generated/mutations",
+    ):
         base = root / dirname
         if not base.exists():
             continue

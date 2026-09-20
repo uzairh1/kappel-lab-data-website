@@ -1,6 +1,5 @@
 """
-ingest_to_postgres.py — loads data.json, diseases.json, and mutations/*
-into the Supabase Postgres instance (schema.sql).
+ingest_postgres.py loads the generated catalog into the Postgres schema.
  
 R2 upload is intentionally NOT included yet (on hold per instruction) --
 the `r2_details_key` column stays NULL for now. Backfilling it later is a
@@ -18,23 +17,35 @@ Setup:
     # never commit it to git.
  
 Run:
-    python3 pipeline/ingest_to_postgres.py
+    python pipeline/ingest_postgres.py
 """
 import json, os, sys
 
-# Support both `python pipeline/ingest_to_postgres.py` and module execution.
+# Support both direct script and module execution.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-import psycopg2
-from psycopg2.extras import execute_values
+try:
+    import psycopg2
+    from psycopg2.extras import execute_values
+except ImportError:
+    psycopg2 = None
+    execute_values = None
 
 from pipeline.steps.tissues import normalize_protein_cell_types
+from pipeline.config import default_paths
 
 
 STANDARD_BATCH_SIZE = 5_000
 LARGE_JSON_BATCH_SIZE = 2_000
+
+PATHS = default_paths()
+PROTEIN_CATALOG = PATHS.protein_catalog
+DISEASE_ASSOCIATIONS = PATHS.disease_associations
+PROTEIN_DETAILS_DIR = PATHS.protein_details
+TISSUE_EXPRESSION_DIR = PATHS.tissue_expression
+MUTATIONS_DIR = PATHS.mutations
  
 try:
     from dotenv import load_dotenv
@@ -45,19 +56,25 @@ except ImportError:
 
 def preflight_generated_inputs():
     """Validate every locally adaptable detail/tissue value before connecting."""
-    required = ["data.json", "diseases.json", "protein_details", "tissues", "mutations"]
+    required = [
+        PROTEIN_CATALOG,
+        DISEASE_ASSOCIATIONS,
+        PROTEIN_DETAILS_DIR,
+        TISSUE_EXPRESSION_DIR,
+        MUTATIONS_DIR,
+    ]
     missing = [path for path in required if not os.path.exists(path)]
     if missing:
         raise ValueError(f"Required generated inputs are missing: {missing}")
 
-    proteins = json.load(open("data.json"))
+    proteins = json.load(open(PROTEIN_CATALOG))
     protein_ids = {p["uniprot"] for p in proteins}
-    diseases = json.load(open("diseases.json"))
-    detail_ids = {name[:-5] for name in os.listdir("protein_details") if name.endswith(".json")}
-    tissue_ids = {name[:-5] for name in os.listdir("tissues") if name.endswith(".json")}
+    diseases = json.load(open(DISEASE_ASSOCIATIONS))
+    detail_ids = {name[:-5] for name in os.listdir(PROTEIN_DETAILS_DIR) if name.endswith(".json")}
+    tissue_ids = {name[:-5] for name in os.listdir(TISSUE_EXPRESSION_DIR) if name.endswith(".json")}
     mutation_ids = {
-        name for name in os.listdir("mutations")
-        if os.path.isdir(os.path.join("mutations", name))
+        name for name in os.listdir(MUTATIONS_DIR)
+        if os.path.isdir(os.path.join(MUTATIONS_DIR, name))
     }
     for label, ids in (
         ("diseases", set(diseases)),
@@ -74,7 +91,7 @@ def preflight_generated_inputs():
 
     ppi_count = tissue_count = 0
     for uniprot in sorted(detail_ids):
-        detail = json.load(open(os.path.join("protein_details", f"{uniprot}.json")))
+        detail = json.load(open(os.path.join(PROTEIN_DETAILS_DIR, f"{uniprot}.json")))
         for partner in detail.get("ppi", {}).get("all_partners", []):
             partner_id = partner.get("uniprot")
             score = partner.get("score")
@@ -87,7 +104,7 @@ def preflight_generated_inputs():
             ppi_count += 1
 
     for uniprot in sorted(tissue_ids):
-        tissue_doc = json.load(open(os.path.join("tissues", f"{uniprot}.json")))
+        tissue_doc = json.load(open(os.path.join(TISSUE_EXPRESSION_DIR, f"{uniprot}.json")))
         for tissue in tissue_doc.get("tissues", []):
             for key in ("organs", "anatomical_systems"):
                 values = tissue.get(key) or []
@@ -112,7 +129,7 @@ def preflight_generated_inputs():
     )
  
 def ingest_proteins(cur):
-    proteins = json.load(open("data.json"))
+    proteins = json.load(open(PROTEIN_CATALOG))
     rows = [(
         p["uniprot"], p["gene"], p.get("ensg"), p.get("dominant"), p.get("isoform_number"),
         p.get("isoform_label"), p.get("isoform_count"), p.get("catalog_source"), p.get("length"), p.get("idr_count"), p.get("idr_total_size"),
@@ -158,7 +175,7 @@ def ingest_proteins(cur):
 
 def ingest_protein_isoforms(cur):
     """Load nested expanded-dataset isoform metadata from protein detail files."""
-    details_dir = "protein_details"
+    details_dir = PROTEIN_DETAILS_DIR
     if not os.path.isdir(details_dir):
         raise FileNotFoundError("protein_details/ is required for authoritative ingestion")
 
@@ -193,7 +210,7 @@ def ingest_protein_isoforms(cur):
  
  
 def ingest_diseases(cur):
-    diseases = json.load(open("diseases.json"))
+    diseases = json.load(open(DISEASE_ASSOCIATIONS))
     cur.execute("DELETE FROM diseases")  # full refresh -- diseases has no natural unique key to upsert on
     rows = [
         (uniprot, d["disease_id"], d.get("score"), d.get("evidence_count"), d.get("datatypes"))
@@ -209,7 +226,7 @@ def ingest_diseases(cur):
  
  
 def ingest_variants(cur):
-    mutations_dir = "mutations"
+    mutations_dir = MUTATIONS_DIR
     if not os.path.isdir(mutations_dir):
         raise FileNotFoundError("mutations/ is required for authoritative ingestion")
     cur.execute("SELECT uniprot FROM proteins")
@@ -266,7 +283,7 @@ def ingest_protein_detail_tables(cur):
     from protein_details/*.json -- the data that used to only exist in
     lazy-loaded per-protein files, now queryable/filterable across all
     proteins at once."""
-    details_dir = "protein_details"
+    details_dir = PROTEIN_DETAILS_DIR
     if not os.path.isdir(details_dir):
         raise FileNotFoundError("protein_details/ is required for authoritative ingestion")
  
@@ -276,7 +293,7 @@ def ingest_protein_detail_tables(cur):
     # condensate NAME/type/confidence live in data.json's parallel arrays
     # (aligned by index to condensate_details), not in protein_details
     # itself -- confirmed by direct inspection, not assumed
-    proteins_raw = {p["uniprot"]: p for p in json.load(open("data.json"))}
+    proteins_raw = {p["uniprot"]: p for p in json.load(open(PROTEIN_CATALOG))}
  
     for table in ["condensate_details", "ppi_partners", "idr_segments", "go_terms"]:
         cur.execute(f"DELETE FROM {table}")  # full refresh, same reasoning as diseases/variants
@@ -352,7 +369,7 @@ def ingest_protein_detail_tables(cur):
  
  
 def ingest_tissue_expression(cur):
-    tissues_dir = "tissues"
+    tissues_dir = TISSUE_EXPRESSION_DIR
     if not os.path.isdir(tissues_dir):
         raise FileNotFoundError("tissues/ is required for authoritative ingestion")
  
@@ -394,6 +411,13 @@ def ingest_tissue_expression(cur):
  
  
 def main():
+    if psycopg2 is None:
+        print(
+            "ERROR: psycopg2 is not installed. Run "
+            "`python -m pip install -r pipeline/requirements.txt` first."
+        )
+        return 1
+
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         print("ERROR: DATABASE_URL environment variable not set.")

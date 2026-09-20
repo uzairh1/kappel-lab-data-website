@@ -15,7 +15,7 @@ FieldSpec("IDR_SASA", "sasa")
 This writes the registered value to:
 
 ```text
-protein_details/<UNIPROT>.json
+data/generated/protein_details/<UNIPROT>.json
   biophysics_regions.idr_segments[].sasa
 ```
 
@@ -34,7 +34,7 @@ FieldSpec("Domains_SASA", "sasa")
 This writes the registered value to:
 
 ```text
-protein_details/<UNIPROT>.json
+data/generated/protein_details/<UNIPROT>.json
   domain_types[].sasa
 ```
 
@@ -49,5 +49,5 @@ Add one `FieldSpec` to `CONDENSATE_FIELDS` in
 
 Propagation into generated JSON is separate from deciding how a brand-new
 measurement should be displayed in the browser. If a new field needs its own
-label, table column, filter, plot, or tooltip, `app.js` still needs the
+label, table column, filter, plot, or tooltip, `frontend/application.js` still needs the
 corresponding UI change.

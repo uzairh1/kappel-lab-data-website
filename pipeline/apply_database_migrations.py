@@ -20,7 +20,7 @@ def main() -> int:
         "migration",
         nargs="?",
         type=Path,
-        default=root / "migrations" / "001_combined_catalog.sql",
+        default=root / "database" / "migrations" / "001_combined_protein_catalog.sql",
     )
     args = parser.parse_args()
 

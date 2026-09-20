@@ -6,26 +6,26 @@ Run from the repository root:
 python -m pipeline.build
 ```
 
-The only external dataset required by the core build is the expanded
-`RBP_Dataset.csv`. A different path, including an absolute path to a sample,
+The only external dataset required by the core build is
+`data/source/expanded_protein_annotations.csv`. A different path, including an absolute path to a sample,
 can be supplied explicitly:
 
 ```bash
-python -m pipeline.build --dataset path/to/RBP_Dataset.csv
+python -m pipeline.build --dataset path/to/expanded_protein_annotations.csv
 ```
 
 Rows are grouped by `uniprot_id`. Exactly one `dominant_isoform` row becomes
 the backward-compatible parent protein, while every row is retained under
-`protein_details/<UNIPROT>.json` in the `isoforms` array. New annotation
+`data/generated/protein_details/<UNIPROT>.json` in the `isoforms` array. New annotation
 families are stored in explicit `expanded_annotations` namespaces.
 
 The old Variants & RBP and gene-annotation panel values are retained in the
-checked-in `pipeline/legacy_variant_stats.json` and
-`pipeline/legacy_gene_annotations.json` lookups. Neither `Mini_Dataset.csv`
+checked-in `pipeline/resources/legacy/variant_rbp_lookup.json` and
+`pipeline/resources/legacy/gene_annotation_lookup.json` lookups. Neither the legacy mini dataset
 nor `per_protein_variant_stats*.csv` is a build input.
 
 The original 101-protein website catalog is retained as the verified,
-compressed `pipeline/legacy_catalog.tar.gz` snapshot. The build checks its
+compressed `pipeline/resources/legacy/protein_catalog_snapshot.tar.gz` snapshot. The build checks its
 hash and manifest, rejects any UniProt collision with the expanded dataset,
 and emits one combined catalog. The archive excludes mutation payloads and is
 about 2.3 MB; it is read directly without unpacking loose legacy JSON into the
@@ -43,16 +43,16 @@ larger than the normal Mini Dataset build.
 From an HPC-prefiltered variant file:
 
 ```bash
-python -m pipeline.build --mutations variant_positions_prefiltered.csv
+python -m pipeline.build --mutations data/mutation_inputs/tanya_catalog_variants.csv
 ```
 
-Or, if `variant_positions_filtered.csv` already exists:
+Or, if `website_mutation_records.csv` already exists:
 
 ```bash
-python -m pipeline.build --mutations-filtered variant_positions_filtered.csv
+python -m pipeline.build --mutations-filtered data/mutation_inputs/website_mutation_records.csv
 ```
 
-See `pipeline/MUTATION_PIPELINE.md` for the complete lineage and validation
+See `docs/MUTATION_PIPELINE.md` for the complete lineage and validation
 behavior. The 309 GB `awk_prefilter.sh` scan remains a separate HPC/raw-data
 refresh operation.
 
@@ -63,8 +63,8 @@ length-based dominant selection remains the fallback.
 For PostgreSQL ingestion, run:
 
 ```bash
-python pipeline/apply_migrations.py
-python pipeline/ingest_to_postgres.py
+python pipeline/apply_database_migrations.py
+python pipeline/ingest_postgres.py
 ```
 
 from the repository root after setting `DATABASE_URL`. The migration is

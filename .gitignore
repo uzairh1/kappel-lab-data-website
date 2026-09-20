@@ -1,12 +1,17 @@
 .env
-__pycache__/*
-*.csv
+.env.*
+!.env.example
+
+__pycache__/
 *.py[cod]
-# Generated website data
-/data.json
-/diseases.json
-/protein_details/
-/tissues/
-/mutations/
-/dist/
+
+# Local scientific datasets and mutation intermediates
+/data/source/*.csv
+/data/mutation_inputs/*.csv
+/data/archive/
+/data/work/
+
+# Reproducible build products
+/data/generated/
+/build/
 /gh-pages/

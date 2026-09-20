@@ -101,9 +101,9 @@ def build(
     )
 
     print("[3/5] Writing website JSON products")
-    write_outputs(records, paths.data_json, paths.diseases_json)
+    write_outputs(records, paths.protein_catalog, paths.disease_associations)
     write_details(records, paths.protein_details)
-    write_tissues(records, paths.tissues)
+    write_tissues(records, paths.tissue_expression)
 
     print("[4/5] Reporting legacy Variants & RBP coverage")
     matched = sum(record.variant_stats is not None for record in records)
@@ -178,7 +178,7 @@ def main():
         "--dataset",
         type=Path,
         default=None,
-        help="Expanded RBP dataset (default: <root>/RBP_Dataset.csv).",
+        help="Expanded protein annotations (default: <root>/data/source/expanded_protein_annotations.csv).",
     )
     parser.add_argument("--no-validate", action="store_true", help="Skip core output validation.")
 
@@ -188,7 +188,7 @@ def main():
         type=Path,
         metavar="PREFILTERED_CSV",
         help=(
-            "Also rebuild mutations/ from variant_positions_prefiltered.csv (or another CSV with the same schema). "
+            "Also rebuild mutation data from tanya_catalog_variants.csv (or another CSV with the same schema). "
             "Runs both integrated Python mutation stages; the 309 GB awk prefilter remains separate."
         ),
     )
@@ -196,7 +196,7 @@ def main():
         "--mutations-filtered",
         type=Path,
         metavar="FILTERED_CSV",
-        help="Rebuild mutations/ from an already-created variant_positions_filtered.csv.",
+        help="Rebuild mutation data from an already-created website_mutation_records.csv.",
     )
 
     parser.add_argument(
