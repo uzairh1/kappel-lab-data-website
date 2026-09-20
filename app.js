@@ -699,15 +699,29 @@ const REAL_INDEX_CACHE = {};
 const REAL_ISOFORM_CACHE = {};
 let usingRealMutationData = false;
 
+function normalizeMutationCondition(value){
+  if(value == null) return "Not specified";
+  const condition = String(value).trim();
+  const normalized = condition.toLowerCase();
+  if(!condition || ["not specified", "not provided", "unspecified", "not reported", "na", "n/a"].includes(normalized)){
+    return "Not specified";
+  }
+  return condition;
+}
+
 function adaptRealVariant(v){
   return {
     variation_id: v.variation_id, isoform_id: v.isoform_id,
     position: v.position_start, position_end: v.position_end, is_range: v.is_range,
     mutated_from: v.mutated_from, mutated_to: v.mutated_to,
     classification: v.primary_classification || "Uncertain significance",
-    condition: v.primary_condition || "Unspecified",
+    condition: normalizeMutationCondition(v.primary_condition),
     molecular_consequence: v.molecular_consequence, variant_type: v.variant_type,
-    all_classifications: v.all_classifications, n_collapsed_rows: v.n_collapsed_rows,
+    all_classifications: (v.all_classifications || []).map(entry=>({
+      ...entry,
+      condition: normalizeMutationCondition(entry.condition),
+    })),
+    n_collapsed_rows: v.n_collapsed_rows,
     isReal: true,
   };
 }
@@ -718,6 +732,9 @@ async function getMutantViewIndex(p){
     const res = await fetch(`mutations/${p.uniprot}/index.json`);
     if(!res.ok) throw new Error(res.status);
     const idx = await res.json();
+    idx.known_conditions = [...new Set(
+      (idx.known_conditions || []).map(normalizeMutationCondition)
+    )];
     usingRealMutationData = true;
     REAL_INDEX_CACHE[p.uniprot] = idx;
     return idx;
@@ -1206,12 +1223,13 @@ function openMvDetail(v){
   const positionLabel = v.is_range
     ? `${v.mutated_from}${v.position}-${v.position_end}${v.mutated_to} (range)`
     : `${v.mutated_from}${v.position}${v.mutated_to}`;
+  const residuePosition = v.is_range ? `${v.position}-${v.position_end}` : v.position;
 
   let extraSection = "";
   if(isReal && v.all_classifications && v.all_classifications.length){
     extraSection = `
       <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin:14px 0 8px;">
-        All classification records (${v.all_classifications.length}${v.n_collapsed_rows>1 ? `, from ${v.n_collapsed_rows} source rows` : ''})
+        All classification records
       </span>
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${v.all_classifications.map(e=>`
@@ -1234,11 +1252,13 @@ function openMvDetail(v){
 
   panel.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-      <h3>${v.variation_id} <span class="mono" style="font-size:12px; color:var(--faint); font-weight:400;">${isReal ? '' : 'MOCK'}</span></h3>
+      <h3>Variant detail <span class="mono" style="font-size:12px; color:var(--faint); font-weight:400;">${isReal ? '' : 'MOCK'}</span></h3>
       <button class="btn secondary small" onclick="document.getElementById('mv-detail-panel').style.display='none'">Close</button>
     </div>
     <div class="kv-list" style="margin-top:10px;">
-      <div><span>Position</span><b>${positionLabel}</b></div>
+      <div><span>${isReal ? 'ClinVar Variation ID' : 'Mock variant ID'}</span><b>${v.variation_id}</b></div>
+      <div><span>Protein change</span><b>${positionLabel}</b></div>
+      <div><span>Residue position</span><b>${residuePosition}</b></div>
       <div><span>Classification (worst-case)</span><b>${v.classification}</b></div>
       <div><span>Condition</span><b>${v.condition}</b></div>
       <div><span>Molecular consequence</span><b>${v.molecular_consequence || '—'}</b></div>
