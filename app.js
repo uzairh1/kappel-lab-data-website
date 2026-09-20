@@ -1329,8 +1329,12 @@ function openProteinById(uniprot){
     <div class="subnote">FCR = fraction of charged residues; NCPR = net charge per residue; κ describes charge patterning along the sequence (CIDER/localCIDER conventions). Csat and ΔG are derived from coarse-grained phase-separation simulations, not experimental measurement, unless otherwise cited.</div>
   `;
 
+  const expandedDetailDownload = p.catalog_source === "expanded_dataset"
+    ? `<div class="dl-row"><div class="dl-name">${p.uniprot}.full-detail.json</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">expanded annotations</span><button class="dl-btn" onclick='downloadFullDetail("${p.uniprot}")'>Download</button></div></div>`
+    : "";
   document.getElementById("d-files").innerHTML = `
     <div class="dl-row"><div class="dl-name">${p.uniprot}.record.json</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">&lt; 5 KB</span><button class="dl-btn" onclick='downloadRecord("${p.uniprot}")'>Download</button></div></div>
+    ${expandedDetailDownload}
     <div class="dl-row"><div class="dl-name">${p.uniprot}.fasta</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">&lt; 2 KB</span><button class="dl-btn" disabled title="Full sequence export coming with full release">Download</button></div></div>
     <div class="dl-row"><div class="dl-name">condensate_microscopy/${p.uniprot}/</div><div style="display:flex; gap:12px; align-items:center;"><span class="dl-size">est. 40–300 GB</span><button class="dl-btn" disabled title="Planned for full-scale release">Coming soon</button></div></div>
   `;
@@ -1350,6 +1354,17 @@ function downloadRecord(uniprot){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = uniprot + ".record.json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function downloadFullDetail(uniprot){
+  const detail = await loadProteinDetails(uniprot);
+  if(!detail) return;
+  const blob = new Blob([JSON.stringify(detail, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = uniprot + ".full-detail.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
@@ -1383,6 +1398,9 @@ async function loadProteinDetails(uniprot){
 async function loadDetailTabs(uniprot){
   const d = await loadProteinDetails(uniprot);
   currentDetails = d;
+  const expandedWrap = document.getElementById("d-expanded-annotations-wrap");
+  expandedWrap.style.display = "none";
+  expandedWrap.innerHTML = "";
   if(!d){
     ["d-region-biophysics","d-domain-types","d-patterning","d-hgvs","d-full-sequence",
      "d-ppi-body","d-annotation-kv","d-synonyms","d-function-desc","d-subcellular",
@@ -1395,6 +1413,11 @@ async function loadDetailTabs(uniprot){
 
   renderRegionBiophysicsTable();
   renderRemainingDetailTabs(d);
+  const p = PROTEINS.find(record=>record.uniprot===uniprot);
+  if(p?.catalog_source === "expanded_dataset"){
+    renderExpandedAnnotations(d);
+    await renderExpandedVariantsPanel(p, d);
+  }
 }
 
 // default to a compact, commonly-relevant subset; full 15 available via the Metrics toggle
@@ -1825,7 +1848,214 @@ document.getElementById("disease-sort-select").addEventListener("change", e=>{
   diseaseState.sort = e.target.value; diseaseState.page = 1; loadDiseasePage();
 });
 
+function escapeExpandedHtml(value){
+  return String(value ?? "").replace(/[&<>"']/g, ch=>({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;",
+  })[ch]);
+}
+
+function expandedList(value){
+  if(value == null || value === "") return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function expandedTags(values, emptyText="None recorded"){
+  const items = expandedList(values).filter(v=>v != null && v !== "");
+  if(!items.length) return `<span class="empty-note" style="padding:0;">${emptyText}</span>`;
+  return items.map(item=>{
+    const label = typeof item === "object"
+      ? (item.name || item.description || item.id || JSON.stringify(item))
+      : item;
+    return `<span class="cond-tag">${escapeExpandedHtml(label)}</span>`;
+  }).join("");
+}
+
+function renderExpandedAnnotations(d){
+  const wrap = document.getElementById("d-expanded-annotations-wrap");
+  const parent = d.expanded_annotations || {};
+  const isoform = (d.isoforms || []).find(i=>i.dominant) || (d.isoforms || [])[0] || {};
+  const annotations = isoform.expanded_annotations || {};
+  const identifiers = annotations.identifiers || {};
+  const localization = annotations.localization || {};
+  const interpro = annotations.interpro || {};
+  const roles = annotations.functional_roles || {};
+  const ptms = annotations.post_translational_modifications || {};
+  const structure = annotations.structure || {};
+  const provenance = parent.dataset_provenance || {};
+
+  const probabilityLabels = {
+    deeploc_probability_cytoplasm:"Cytoplasm",
+    deeploc_probability_nucleus:"Nucleus",
+    deeploc_probability_extracellular:"Extracellular",
+    deeploc_probability_cell_membrane:"Cell membrane",
+    deeploc_probability_mitochondrion:"Mitochondrion",
+    deeploc_probability_endoplasmic_reticulum:"Endoplasmic reticulum",
+    deeploc_probability_lysosome_vacuole:"Lysosome/vacuole",
+    deeploc_probability_golgi_apparatus:"Golgi apparatus",
+    deeploc_probability_peroxisome:"Peroxisome",
+  };
+  const topProbabilities = Object.entries(probabilityLabels)
+    .map(([key,label])=>({label, value:localization[key]}))
+    .filter(item=>typeof item.value === "number")
+    .sort((a,b)=>b.value-a.value)
+    .slice(0,5);
+  const probabilityRows = topProbabilities.map(item=>
+    `<div><span>${item.label}</span><b>${(item.value*100).toFixed(1)}%</b></div>`
+  ).join("");
+
+  const roleLabels = {
+    role_in_transcription:"Transcription",
+    role_in_translation:"Translation",
+    role_in_mrna_stability:"mRNA stability",
+    role_in_translation_stability:"Translation stability",
+  };
+  const activeRoles = Object.entries(roleLabels)
+    .filter(([key])=>Number(roles[key]) > 0)
+    .map(([,label])=>label);
+
+  const ptmLabels = {
+    acetylation:"Acetylation", n_glycosylation:"N-glycosylation",
+    o_glycosylation:"O-glycosylation", c_glycosylation:"C-glycosylation",
+    s_glycosylation:"S-glycosylation", methylation:"Methylation",
+    myristoylation:"Myristoylation", phosphorylation:"Phosphorylation",
+    sumoylation:"SUMOylation", ubiquitination:"Ubiquitination",
+    s_nitrosylation:"S-nitrosylation",
+  };
+  const activePtms = Object.entries(ptmLabels).flatMap(([key,label])=>{
+    const count = Number(ptms[`ptm_${key}`] || 0);
+    if(!count) return [];
+    const positions = expandedList(ptms[`ptm_${key}_positions`]);
+    const suffix = positions.length ? ` — positions ${positions.join(", ")}` : "";
+    return [`${label}: ${count}${suffix}`];
+  });
+
+  const interproDomains = expandedList(interpro.InterPro_domains);
+  const pdbIds = expandedList(structure.RCSB_PDB_IDs);
+  const refseqIds = expandedList(identifiers.refseq_protein_ids);
+  const ensemblProteinIds = expandedList(identifiers.ensembl_protein_ids);
+
+  wrap.innerHTML = `
+    <div class="detail-grid">
+      <div class="panel">
+        <h3>Predicted localization</h3>
+        <div class="cond-tags" style="max-width:none; margin-bottom:14px;">${expandedTags(localization.deeploc_localizations, "No localization prediction")}</div>
+        <div class="kv-list">${probabilityRows || `<div><span>Probabilities</span><b>Not available</b></div>`}</div>
+        <p class="subnote" style="margin-top:10px;">${escapeExpandedHtml(localization.deeploc_annotation_scope || "")}</p>
+      </div>
+      <div class="panel">
+        <h3>Protein identifiers</h3>
+        <div class="kv-list">
+          <div><span>Dataset isoform</span><b>${escapeExpandedHtml(isoform.dataset_isoform_id || "—")}</b></div>
+          <div><span>UniProt entry</span><b>${escapeExpandedHtml(identifiers.uniprot_entry_name || "—")}</b></div>
+          <div><span>RefSeq proteins</span><b>${escapeExpandedHtml(refseqIds.join(", ") || "—")}</b></div>
+          <div><span>Ensembl proteins</span><b>${escapeExpandedHtml(ensemblProteinIds.join(", ") || "—")}</b></div>
+          <div><span>Canonical match</span><b>${escapeExpandedHtml(identifiers.canonical_match_method || "—")}</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="detail-grid" style="margin-top:20px;">
+      <div class="panel">
+        <h3>InterPro &amp; functional roles</h3>
+        <div class="kv-list" style="margin-bottom:14px;">
+          <div><span>InterPro hits</span><b>${Number(interpro.InterPro_n_hits || 0)}</b></div>
+          <div><span>InterPro version</span><b>${escapeExpandedHtml(interpro.interpro_version || "—")}</b></div>
+        </div>
+        <div class="cond-tags" style="max-width:none; margin-bottom:14px;">${expandedTags(interproDomains, "No InterPro hits in this release")}</div>
+        <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; margin-bottom:8px;">Functional roles</span>
+        <div class="cond-tags" style="max-width:none;">${expandedTags(activeRoles, "No positive role flags")}</div>
+      </div>
+      <div class="panel">
+        <h3>Post-translational modifications &amp; structure</h3>
+        <div class="cond-tags" style="max-width:none; margin-bottom:14px;">${expandedTags(activePtms, "No projected PTM sites")}</div>
+        <div class="kv-list">
+          <div><span>PDB entries</span><b>${Number(structure.RCSB_PDB_count || 0)}</b></div>
+          <div><span>Secondary-structure observations</span><b>${Number(structure.RCSB_secondary_structure_observation_count || 0)}</b></div>
+        </div>
+        <div class="cond-tags" style="max-width:none; margin-top:12px;">${expandedTags(pdbIds, "No PDB entries")}</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:20px;">
+      <h3>Dataset provenance</h3>
+      <div class="kv-list">
+        <div><span>Swiss-Prot release</span><b>${escapeExpandedHtml(provenance.swissprot_release || "—")}</b></div>
+        <div><span>NCBI annotation release</span><b>${escapeExpandedHtml(provenance.ncbi_annotation_release || "—")}</b></div>
+        <div><span>Ensembl release</span><b>${escapeExpandedHtml(provenance.ensembl_release || "—")}</b></div>
+        <div><span>Build timestamp (UTC)</span><b>${escapeExpandedHtml(provenance.build_timestamp_utc || "—")}</b></div>
+      </div>
+    </div>
+  `;
+  wrap.style.display = "block";
+}
+
+const EXPANDED_MUTATION_INDEX_CACHE = {};
+async function getExpandedMutationIndex(uniprot){
+  if(uniprot in EXPANDED_MUTATION_INDEX_CACHE) return EXPANDED_MUTATION_INDEX_CACHE[uniprot];
+  try{
+    const res = await fetch(`mutations/${uniprot}/index.json`);
+    if(!res.ok) throw new Error(res.status);
+    EXPANDED_MUTATION_INDEX_CACHE[uniprot] = await res.json();
+  } catch(err){
+    EXPANDED_MUTATION_INDEX_CACHE[uniprot] = null;
+  }
+  return EXPANDED_MUTATION_INDEX_CACHE[uniprot];
+}
+
+async function renderExpandedVariantsPanel(p, d){
+  const panel = document.getElementById("d-variants-panel");
+  const isoform = (d.isoforms || []).find(i=>i.dominant) || (d.isoforms || [])[0] || {};
+  const annotations = isoform.expanded_annotations || {};
+  const rna = annotations.rna_binding || {};
+  const interpro = annotations.interpro || {};
+  const index = await getExpandedMutationIndex(p.uniprot);
+  if(currentDetailUniprot !== p.uniprot) return;
+
+  const evidenceSources = [
+    ["has_encode_published","ENCODE eCLIP (published)"],
+    ["has_encode_matched","ENCODE eCLIP (matched)"],
+    ["has_encori_published","ENCORI (published)"],
+    ["has_encori_matched","ENCORI (matched)"],
+    ["has_postar","POSTAR"], ["has_skipper","Skipper"],
+  ].filter(([key])=>rna[key] === true || Number(rna[key]) === 1).map(([,label])=>label);
+  const hasRbpEvidence = Boolean(rna.rbp_census_unique) || evidenceSources.length > 0;
+  const interproDomains = expandedList(interpro.InterPro_domains);
+  const classificationTags = index ? expandedTags(index.known_classifications, "None recorded") : "";
+  const mappingWarnings = index
+    ? index.isoforms.filter(item=>item.dominant_source === "exact_length_match").length
+    : 0;
+  const mutationSummary = index ? `
+    <div class="kv-list" style="margin-bottom:14px;">
+      <div><span>Mapped variants</span><b>${Number(index.total_variant_count || 0).toLocaleString()}</b></div>
+      <div><span>Mapped RefSeq isoforms</span><b>${index.isoforms.length}</b></div>
+    </div>
+    <div class="cond-tags" style="max-width:none; margin-bottom:10px;">${classificationTags}</div>
+    ${mappingWarnings ? `<p class="subnote">${mappingWarnings} isoform mapping(s) used sequence length only and should be treated as provisional.</p>` : ""}
+    <p class="subnote">Open the Mutant view tab for positions and individual records.</p>
+  ` : `<div class="empty-note">No mapped mutation file is available for this expanded protein in the current release. This is missing coverage, not a reported count of zero.</div>`;
+
+  panel.innerHTML = `
+    <h3>Variant &amp; RNA-binding protein data</h3>
+    <div class="kv-list" style="margin-bottom:20px;">
+      <div><span>Catalog source</span><b>Expanded dataset</b></div>
+      <div><span>RNA-binding evidence supplied</span><b>${hasRbpEvidence ? "Yes" : "No"}</b></div>
+      <div><span>RBP census value</span><b>${escapeExpandedHtml(rna.rbp_census_unique || "—")}</b></div>
+    </div>
+    <div style="margin-bottom:20px;">
+      <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">RNA-binding evidence sources</span>
+      <div class="cond-tags" style="max-width:none;">${expandedTags(evidenceSources, "No RBP/CLIP evidence supplied for this protein")}</div>
+    </div>
+    <div style="margin-bottom:20px;">
+      <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">InterPro domains</span>
+      <div class="cond-tags" style="max-width:none;">${expandedTags(interproDomains, "No InterPro domains in this release")}</div>
+    </div>
+    <span style="display:block; font-size:11px; color:var(--faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px;">ClinVar-derived mapped variants</span>
+    ${mutationSummary}
+  `;
+}
+
 function buildVariantsPanel(p){
+  if(p.catalog_source === "expanded_dataset"){
+    return `<h3>Variant &amp; RNA-binding protein data</h3><div class="empty-note">Loading expanded annotations…</div>`;
+  }
   const v = p.variant_stats;
   if(!v){
     return `<h3>Variant &amp; RNA-binding protein data</h3>
