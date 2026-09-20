@@ -17,7 +17,9 @@ from __future__ import annotations
 import ast
 import json
 import math
+import os
 import shutil
+import subprocess
 import tempfile
 import uuid
 from collections import defaultdict
@@ -617,10 +619,22 @@ def _replace_directory_safely(staged: Path, destination: Path) -> None:
         if had_existing:
             destination.rename(backup)
         staged.rename(destination)
+        if os.name == "nt":
+            result = subprocess.run(
+                ["icacls", str(destination), "/inheritance:e", "/T", "/C", "/Q"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode:
+                raise OSError(
+                    f"Could not restore inherited Windows permissions on {destination}: "
+                    f"{result.stderr or result.stdout}"
+                )
     except Exception:
-        if destination.exists() and not had_existing:
+        if destination.exists():
             shutil.rmtree(destination, ignore_errors=True)
-        if backup.exists() and not destination.exists():
+        if backup.exists():
             backup.rename(destination)
         raise
     else:

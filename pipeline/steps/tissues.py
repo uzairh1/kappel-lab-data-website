@@ -4,6 +4,28 @@ from pathlib import Path
 
 from .common import parse_jsonish
 
+
+def normalize_protein_cell_types(values):
+    """Return searchable names plus lossless structured cell-type details."""
+    names = []
+    details = []
+    for value in values or []:
+        if isinstance(value, str):
+            name = value.strip()
+            if not name:
+                continue
+            names.append(name)
+            details.append({"name": name, "level": None, "reliability": None})
+        elif isinstance(value, dict):
+            name = value.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            names.append(name.strip())
+            details.append(dict(value))
+    # Preserve first-seen order while avoiding duplicate names in TEXT[].
+    names = list(dict.fromkeys(names))
+    return names, details
+
 def build_tissue_entries(raw):
     entries = parse_jsonish(raw) or []
     cleaned = []

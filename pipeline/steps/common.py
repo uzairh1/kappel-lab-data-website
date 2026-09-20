@@ -49,6 +49,20 @@ def avg_list(values):
     return round(sum(values) / len(values), 4) if values else None
 
 
+def flatten_ppi_scores(values: dict) -> dict[str, float | int]:
+    """Normalize direct and ENSP-nested PPI maps to UniProt -> score."""
+    flattened: dict[str, float | int] = {}
+    for outer_id, value in (values or {}).items():
+        candidates = value.items() if isinstance(value, dict) else [(outer_id, value)]
+        for partner_id, score in candidates:
+            if isinstance(score, bool) or not isinstance(score, (int, float)):
+                continue
+            previous = flattened.get(str(partner_id))
+            if previous is None or score > previous:
+                flattened[str(partner_id)] = score
+    return flattened
+
+
 def is_missing(value) -> bool:
     try:
         return bool(pd.isna(value))

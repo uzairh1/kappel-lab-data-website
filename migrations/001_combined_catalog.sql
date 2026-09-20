@@ -8,6 +8,9 @@ ALTER TABLE proteins
 ALTER TABLE proteins
     ADD COLUMN IF NOT EXISTS catalog_source TEXT NOT NULL DEFAULT 'legacy_snapshot';
 
+ALTER TABLE tissue_expression
+    ADD COLUMN IF NOT EXISTS protein_cell_type_details JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 DO $$
 BEGIN
     IF NOT EXISTS (

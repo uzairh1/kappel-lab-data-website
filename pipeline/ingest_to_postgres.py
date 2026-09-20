@@ -21,14 +21,95 @@ Run:
     python3 pipeline/ingest_to_postgres.py
 """
 import json, os, sys
+
+# Support both `python pipeline/ingest_to_postgres.py` and module execution.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
 import psycopg2
 from psycopg2.extras import execute_values
+
+from pipeline.steps.tissues import normalize_protein_cell_types
+
+
+STANDARD_BATCH_SIZE = 5_000
+LARGE_JSON_BATCH_SIZE = 2_000
  
 try:
     from dotenv import load_dotenv
     load_dotenv()  # reads .env in the current directory automatically, if present
 except ImportError:
     pass  # fine if not installed -- DATABASE_URL can still be set directly in the shell environment
+
+
+def preflight_generated_inputs():
+    """Validate every locally adaptable detail/tissue value before connecting."""
+    required = ["data.json", "diseases.json", "protein_details", "tissues", "mutations"]
+    missing = [path for path in required if not os.path.exists(path)]
+    if missing:
+        raise ValueError(f"Required generated inputs are missing: {missing}")
+
+    proteins = json.load(open("data.json"))
+    protein_ids = {p["uniprot"] for p in proteins}
+    diseases = json.load(open("diseases.json"))
+    detail_ids = {name[:-5] for name in os.listdir("protein_details") if name.endswith(".json")}
+    tissue_ids = {name[:-5] for name in os.listdir("tissues") if name.endswith(".json")}
+    mutation_ids = {
+        name for name in os.listdir("mutations")
+        if os.path.isdir(os.path.join("mutations", name))
+    }
+    for label, ids in (
+        ("diseases", set(diseases)),
+        ("protein_details", detail_ids),
+        ("tissues", tissue_ids),
+    ):
+        if ids != protein_ids:
+            raise ValueError(
+                f"{label} IDs differ from data.json: "
+                f"missing={sorted(protein_ids - ids)}, extra={sorted(ids - protein_ids)}"
+            )
+    if not mutation_ids <= protein_ids:
+        raise ValueError(f"mutations/ contains unknown proteins: {sorted(mutation_ids - protein_ids)}")
+
+    ppi_count = tissue_count = 0
+    for uniprot in sorted(detail_ids):
+        detail = json.load(open(os.path.join("protein_details", f"{uniprot}.json")))
+        for partner in detail.get("ppi", {}).get("all_partners", []):
+            partner_id = partner.get("uniprot")
+            score = partner.get("score")
+            if not isinstance(partner_id, str) or not partner_id:
+                raise ValueError(f"{uniprot}: invalid PPI partner ID: {partner_id!r}")
+            if isinstance(score, bool) or not isinstance(score, (int, float)):
+                raise ValueError(
+                    f"{uniprot}/{partner_id}: PPI score must be numeric, got {type(score).__name__}"
+                )
+            ppi_count += 1
+
+    for uniprot in sorted(tissue_ids):
+        tissue_doc = json.load(open(os.path.join("tissues", f"{uniprot}.json")))
+        for tissue in tissue_doc.get("tissues", []):
+            for key in ("organs", "anatomical_systems"):
+                values = tissue.get(key) or []
+                if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
+                    raise ValueError(f"{uniprot}/{tissue.get('label')}: {key} must be a string list")
+            normalize_protein_cell_types(tissue.get("protein_cell_types"))
+            for key in (
+                "label", "efo_code", "rna_value", "rna_zscore", "rna_level",
+                "protein_reliability", "protein_level",
+            ):
+                if isinstance(tissue.get(key), (dict, list)):
+                    raise ValueError(
+                        f"{uniprot}/{tissue.get('label')}: {key} must be scalar, "
+                        f"got {type(tissue.get(key)).__name__}"
+                    )
+            tissue_count += 1
+
+    print(
+        "Preflight passed: "
+        f"{len(protein_ids)} proteins, {ppi_count} PPI rows, "
+        f"{tissue_count} tissue rows, {len(mutation_ids)} mutation proteins."
+    )
  
 def ingest_proteins(cur):
     proteins = json.load(open("data.json"))
@@ -67,7 +148,7 @@ def ingest_proteins(cur):
             delta_g_kt=EXCLUDED.delta_g_kt, ppi_partner_count=EXCLUDED.ppi_partner_count,
             disease_count=EXCLUDED.disease_count, variant_stats=EXCLUDED.variant_stats,
             updated_at=now()
-    """, rows, page_size=1000)
+    """, rows, page_size=STANDARD_BATCH_SIZE)
     protein_ids = [p["uniprot"] for p in proteins]
     cur.execute("DELETE FROM proteins WHERE NOT (uniprot = ANY(%s))", (protein_ids,))
     removed = cur.rowcount
@@ -107,7 +188,7 @@ def ingest_protein_isoforms(cur):
                 dataset_isoform_id, uniprot, dominant, row_kind, length, sequence_sha256,
                 sequence_source, identifiers, expanded_annotations
             ) VALUES %s
-        """, rows, page_size=1000)
+        """, rows, page_size=STANDARD_BATCH_SIZE)
     print(f"Ingested {len(rows)} protein isoforms.")
  
  
@@ -123,7 +204,7 @@ def ingest_diseases(cur):
     # DB (each with real network latency) is minutes; batched, it's seconds.
     execute_values(cur, """
         INSERT INTO diseases (uniprot, disease_id, score, evidence_count, datatypes) VALUES %s
-    """, rows, page_size=1000)
+    """, rows, page_size=STANDARD_BATCH_SIZE)
     print(f"Ingested {len(rows)} disease associations across {len(diseases)} proteins.")
  
  
@@ -173,7 +254,7 @@ def ingest_variants(cur):
                 mutated_from, mutated_to, molecular_consequence, variant_type, mutation_type,
                 primary_classification, primary_condition, all_classifications, n_collapsed_rows
             ) VALUES %s
-        """, rows, page_size=1000)
+        """, rows, page_size=LARGE_JSON_BATCH_SIZE)
     print(f"Ingested {len(rows)} variants.")
     if skipped_proteins:
         print(f"Skipped {len(skipped_proteins)} protein(s) in mutations/ with no matching row in proteins table "
@@ -248,22 +329,22 @@ def ingest_protein_detail_tables(cur):
         execute_values(cur, """
             INSERT INTO condensate_details (uniprot, condensate_name, condensate_type, confidence,
                 species_tax_id, dna_associated, rna_associated, chemical_mods, condensatopathy) VALUES %s
-        """, condensate_rows, page_size=1000)
+        """, condensate_rows, page_size=STANDARD_BATCH_SIZE)
     if ppi_rows:
         execute_values(cur, """
             INSERT INTO ppi_partners (uniprot, partner_uniprot, score, partner_in_pilot_set) VALUES %s
-        """, ppi_rows, page_size=1000)
+        """, ppi_rows, page_size=STANDARD_BATCH_SIZE)
     if idr_rows:
         execute_values(cur, """
             INSERT INTO idr_segments (uniprot, segment_index, start_pos, end_pos, size,
                 fcr, ncpr, kappa, delta, delta_max, isoelectric_point, molecular_weight,
                 mean_net_charge, mean_hydropathy, uversky_hydropathy, ppii_propensity,
                 fraction_negative, fraction_positive, fraction_expanding, fraction_disorder_promoting) VALUES %s
-        """, idr_rows, page_size=1000)
+        """, idr_rows, page_size=STANDARD_BATCH_SIZE)
     if go_rows:
         execute_values(cur, """
             INSERT INTO go_terms (uniprot, aspect, go_id, description, evidence) VALUES %s
-        """, go_rows, page_size=1000)
+        """, go_rows, page_size=STANDARD_BATCH_SIZE)
     print(f"Ingested {len(condensate_rows)} condensate_details, {len(ppi_rows)} ppi_partners, "
           f"{len(idr_rows)} idr_segments, {len(go_rows)} go_terms rows.")
     if skipped:
@@ -289,20 +370,24 @@ def ingest_tissue_expression(cur):
             continue
         d = json.load(open(os.path.join(tissues_dir, fname)))
         for t in d.get("tissues", []):
+            cell_type_names, cell_type_details = normalize_protein_cell_types(
+                t.get("protein_cell_types")
+            )
             rows.append((
                 uniprot, t.get("label"), t.get("efo_code"), t.get("organs") or [],
                 t.get("anatomical_systems") or [], t.get("rna_value"), t.get("rna_zscore"),
                 t.get("rna_level"), t.get("protein_reliability"), t.get("protein_level"),
-                t.get("protein_cell_types") or [],
+                cell_type_names, json.dumps(cell_type_details),
             ))
  
     if rows:
         execute_values(cur, """
             INSERT INTO tissue_expression (
                 uniprot, label, efo_code, organs, anatomical_systems,
-                rna_value, rna_zscore, rna_level, protein_reliability, protein_level, protein_cell_types
+                rna_value, rna_zscore, rna_level, protein_reliability, protein_level,
+                protein_cell_types, protein_cell_type_details
             ) VALUES %s
-        """, rows, page_size=1000)
+        """, rows, page_size=STANDARD_BATCH_SIZE)
     print(f"Ingested {len(rows)} tissue_expression rows.")
     if skipped:
         print(f"Skipped {len(skipped)} protein(s) in tissues/ with no matching row in proteins table: {skipped}")
@@ -315,6 +400,12 @@ def main():
         print("Either put it in .env or export DATABASE_URL before ingestion.")
         return 1
 
+    try:
+        preflight_generated_inputs()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: Local ingestion preflight failed: {exc}")
+        return 1
+
     # One transaction gives readers either the complete old catalog or the
     # complete new catalog. The advisory lock prevents concurrent publishers.
     with psycopg2.connect(database_url) as conn:
@@ -323,9 +414,9 @@ def main():
             ingest_proteins(cur)
             ingest_protein_isoforms(cur)
             ingest_diseases(cur)
-            ingest_variants(cur)
             ingest_protein_detail_tables(cur)
             ingest_tissue_expression(cur)
+            ingest_variants(cur)
     print("\nDone. Note: R2 bulk-file upload was intentionally skipped this run (on hold) --")
     print("r2_details_key remains NULL for all proteins until that work resumes.")
     return 0

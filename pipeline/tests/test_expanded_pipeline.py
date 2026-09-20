@@ -6,7 +6,8 @@ import pandas as pd
 from pipeline.steps.canonical import build_canonical_records
 from pipeline.expanded_schema import build_isoform_annotations
 from pipeline.steps.proteins import parse_diseases
-from pipeline.steps.tissues import build_tissue_entries
+from pipeline.steps.tissues import build_tissue_entries, normalize_protein_cell_types
+from pipeline.steps.common import flatten_ppi_scores
 from pipeline.validation.checks import REQUIRED_EXPANDED_COLUMNS, validate_source
 
 
@@ -36,6 +37,32 @@ def expanded_row(uniprot="PTEST1", isoform="PTEST1-1", dominant=1):
 
 
 class ExpandedPipelineTests(unittest.TestCase):
+    def test_normalizes_tissue_cell_types_without_losing_details(self):
+        names, details = normalize_protein_cell_types([
+            "adipocyte",
+            {"name": "peripheral nerve", "level": 0, "reliability": True},
+            "adipocyte",
+        ])
+
+        self.assertEqual(names, ["adipocyte", "peripheral nerve"])
+        self.assertEqual(details[0], {
+            "name": "adipocyte", "level": None, "reliability": None,
+        })
+        self.assertEqual(details[1]["reliability"], True)
+
+    def test_flattens_direct_and_ensp_nested_ppi_scores(self):
+        values = {
+            "P_DIRECT": 100,
+            "ENSP_ONE": {"P_NESTED": 200, "P_SHARED": 150},
+            "ENSP_TWO": {"P_SHARED": 250},
+            "ENSP_EMPTY": {},
+        }
+
+        self.assertEqual(
+            flatten_ppi_scores(values),
+            {"P_DIRECT": 100, "P_NESTED": 200, "P_SHARED": 250},
+        )
+
     def test_groups_isoforms_under_one_canonical_parent(self):
         frame = pd.DataFrame([
             expanded_row(),

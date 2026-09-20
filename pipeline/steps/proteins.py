@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .common import parse_dict, parse_jsonish, parse_pylist
+from .common import flatten_ppi_scores, parse_dict, parse_jsonish, parse_pylist
 
 
 def extract_isoform_label(hgvs_desc, gene):
@@ -41,7 +41,9 @@ def build_summary(row):
     cond_names = parse_pylist(row["Condensate Name"])
     cond_types = parse_pylist(row["Condensate Type"])
     cond_conf = parse_pylist(row["Confidence Score"])
-    ppi_dict = parse_dict(row["PPI_UniProt_Partners_in_Dataframe"])
+    ppi_dict = flatten_ppi_scores(
+        parse_dict(row["PPI_UniProt_Partners_in_Dataframe"])
+    )
     sat_list = parse_pylist(row["Saturation concentration [uM]"])
     dg_list = parse_pylist(row["Delta G [kT]"])
 

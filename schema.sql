@@ -204,7 +204,8 @@ CREATE TABLE tissue_expression (
     rna_level               INTEGER,
     protein_reliability     BOOLEAN,
     protein_level           INTEGER,
-    protein_cell_types      TEXT[]
+    protein_cell_types      TEXT[],
+    protein_cell_type_details JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 CREATE INDEX idx_tissue_expression_uniprot ON tissue_expression (uniprot);
 CREATE INDEX idx_tissue_expression_label ON tissue_expression (label);

@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from .common import avg_list, parse_dict, parse_jsonish, parse_pylist
+from .common import avg_list, flatten_ppi_scores, parse_dict, parse_jsonish, parse_pylist
 from pipeline.field_families import CONDENSATE_FIELDS, domain_fields, idr_fields
 
 
@@ -127,7 +127,10 @@ def build_patterning(row) -> dict[str, Any]:
 
 
 def _ppi_dict_to_list(values: dict) -> list[dict[str, Any]]:
-    return [{"uniprot": key, "score": value} for key, value in values.items()]
+    return [
+        {"uniprot": key, "score": value}
+        for key, value in flatten_ppi_scores(values).items()
+    ]
 
 
 def build_ppi(row) -> dict[str, Any]:
