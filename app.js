@@ -15,15 +15,25 @@ let USING_LIVE_API = false;
 
 async function loadData(){
   try {
-    const res = await fetch(`${API_BASE}/proteins?limit=200`, {signal: AbortSignal.timeout(1500)});
-    if(!res.ok) throw new Error("API returned " + res.status);
-    const payload = await res.json();
-    // API returns paginated summaries; fetch full detail for each so the
-    // rest of the app (which expects full records) keeps working unchanged.
-    const details = await Promise.all(payload.results.map(r =>
-      fetch(`${API_BASE}/proteins/${r.uniprot}`).then(res => res.json())
-    ));
-    PROTEINS = details;
+    const pageSize = 1000;
+    let offset = 0;
+    let total = null;
+    const proteins = [];
+    do {
+      const res = await fetch(
+        `${API_BASE}/proteins?limit=${pageSize}&offset=${offset}`,
+        {signal: AbortSignal.timeout(10000)},
+      );
+      if(!res.ok) throw new Error("API returned " + res.status);
+      const payload = await res.json();
+      if(total === null) total = payload.count;
+      proteins.push(...payload.results);
+      offset += payload.results.length;
+      if(payload.results.length === 0 && offset < total){
+        throw new Error(`API pagination stopped at ${offset} of ${total} proteins`);
+      }
+    } while(offset < total);
+    PROTEINS = proteins;
     USING_LIVE_API = true;
     console.log(`Kappel Lab Data Website: loaded ${PROTEINS.length} proteins from live API at ${API_BASE}`);
   } catch (err) {
