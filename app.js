@@ -1922,14 +1922,16 @@ function renderExpandedAnnotations(d){
     s_nitrosylation:"S-nitrosylation",
   };
   const activePtms = Object.entries(ptmLabels).flatMap(([key,label])=>{
-    const count = Number(ptms[`ptm_${key}`] || 0);
-    if(!count) return [];
+    const present = Number(ptms[`ptm_${key}`] || 0) > 0;
+    if(!present) return [];
     const positions = expandedList(ptms[`ptm_${key}_positions`]);
-    const suffix = positions.length ? ` — positions ${positions.join(", ")}` : "";
-    return [`${label}: ${count}${suffix}`];
+    const suffix = positions.length
+      ? `: ${positions.length} site${positions.length===1 ? "" : "s"} — positions ${positions.join(", ")}`
+      : "";
+    return [`${label}${suffix}`];
   });
 
-  const interproDomains = expandedList(interpro.InterPro_domains);
+  const interproDomains = expandedList(interpro.InterPro_domains).filter(value=>value !== "-");
   const pdbIds = expandedList(structure.RCSB_PDB_IDs);
   const refseqIds = expandedList(identifiers.refseq_protein_ids);
   const ensemblProteinIds = expandedList(identifiers.ensembl_protein_ids);
@@ -1967,6 +1969,7 @@ function renderExpandedAnnotations(d){
       <div class="panel">
         <h3>Post-translational modifications &amp; structure</h3>
         <div class="cond-tags" style="max-width:none; margin-bottom:14px;">${expandedTags(activePtms, "No projected PTM sites")}</div>
+        ${activePtms.length ? `<p class="subnote" style="margin-bottom:14px;">PTM positions use the source dataset's ${escapeExpandedHtml(ptms.ptm_coordinate_system || "amino-acid coordinate system")}.</p>` : ""}
         <div class="kv-list">
           <div><span>PDB entries</span><b>${Number(structure.RCSB_PDB_count || 0)}</b></div>
           <div><span>Secondary-structure observations</span><b>${Number(structure.RCSB_secondary_structure_observation_count || 0)}</b></div>
@@ -2017,7 +2020,7 @@ async function renderExpandedVariantsPanel(p, d){
     ["has_postar","POSTAR"], ["has_skipper","Skipper"],
   ].filter(([key])=>rna[key] === true || Number(rna[key]) === 1).map(([,label])=>label);
   const hasRbpEvidence = Boolean(rna.rbp_census_unique) || evidenceSources.length > 0;
-  const interproDomains = expandedList(interpro.InterPro_domains);
+  const interproDomains = expandedList(interpro.InterPro_domains).filter(value=>value !== "-");
   const classificationTags = index ? expandedTags(index.known_classifications, "None recorded") : "";
   const mappingWarnings = index
     ? index.isoforms.filter(item=>item.dominant_source === "exact_length_match").length
